@@ -17,3 +17,10 @@ config/config.yaml
 
 # 파이프라인 실행 로그
 data/logs/
+
+# 공통 (work 레포 루트에서 옮겨옴)
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
