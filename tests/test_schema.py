@@ -25,6 +25,7 @@ DOC_FILLS = [
     ("ts", U, False), ("symbol", S, False), ("side", S, False), ("qty", I, False),
     ("price", F, False), ("leverage", F, True), ("fee", F, True), ("fee_currency", S, True),
     ("source", S, False), ("source_id", S, True), ("strategy_id", S, True),
+    ("order_id", S, True), ("liquidity", S, True), ("ord_type", S, True), ("trd_match_id", S, True),
 ]
 
 
@@ -42,7 +43,7 @@ def test_definition_matches_doc(schema, doc, key):
 
 def test_allowed_values_and_counts():
     assert len(sc.TRADES.columns) == 12 and len(sc.BARS_1M.columns) == 11
-    assert len(sc.FILLS.columns) == 11
+    assert len(sc.FILLS.columns) == 15
     assert sc.SIDES == {"buy", "sell"} and sc.SOURCES == {"aoa", "synthetic"}
     assert sc.TRADES.dtypes["side"] == "string"
     assert sc.UTC_NS == pd.DatetimeTZDtype("ns", "UTC")
@@ -96,8 +97,12 @@ def fills():
         "fee": [0.000015, -0.0000025, np.nan, 0.00001],
         "fee_currency": pd.array(["XBT", "XBT", pd.NA, "XBT"], dtype="string"),
         "source": pd.array(["synthetic", "synthetic", "aoa", "aoa"], dtype="string"),
-        "source_id": pd.array(["run1-1", "run1-2", pd.NA, pd.NA], dtype="string"),
+        "source_id": pd.array(["run1-1", "run1-2", "e-1", "e-2"], dtype="string"),
         "strategy_id": pd.array(["s-v1", "s-v1", pd.NA, pd.NA], dtype="string"),
+        "order_id": pd.array([pd.NA, pd.NA, "o-1", "o-1"], dtype="string"),
+        "liquidity": pd.array([pd.NA, pd.NA, "maker", "taker"], dtype="string"),
+        "ord_type": pd.array([pd.NA, pd.NA, "Limit", "Limit"], dtype="string"),
+        "trd_match_id": pd.array([pd.NA, pd.NA, "m-1", "m-2"], dtype="string"),
     })
 
 
@@ -186,7 +191,7 @@ def test_fills_bad_source():
 
 def test_fills_synthetic_duplicate_key():
     df = fills()
-    df["source_id"] = pd.array(["run1-1", "run1-1", pd.NA, pd.NA], dtype="string")
+    df["source_id"] = pd.array(["run1-1", "run1-1", "e-1", "e-2"], dtype="string")
     with pytest.raises(SchemaError, match="중복 키"):
         sc.validate_fills(df)
 
@@ -198,12 +203,22 @@ def test_fills_synthetic_requires_source_id():
         sc.validate_fills(df)
 
 
-def test_fills_aoa_rows_exempt_from_key():
+def test_fills_aoa_rows_keyed():
+    """aoa source_id(= execid)는 유일해 키 판정 대상이다(T-20261009-12 에서 면제 해제)."""
     df = fills()
     df["source_id"] = pd.array(["run1-1", "run1-2", "x", "x"], dtype="string")
-    sc.validate_fills(df)  # aoa 중복 source_id 허용
-    df["source_id"] = pd.array(["run1-1", "run1-2", pd.NA, pd.NA], dtype="string")
-    sc.validate_fills(df)  # aoa 결측 source_id 허용
+    with pytest.raises(SchemaError, match="중복"):
+        sc.validate_fills(df)
+    df["source_id"] = pd.array(["run1-1", "run1-2", pd.NA, "y"], dtype="string")
+    with pytest.raises(SchemaError, match="키 .* 결측"):
+        sc.validate_fills(df)
+
+
+def test_fills_bad_liquidity():
+    df = fills()
+    df["liquidity"] = pd.array([pd.NA, pd.NA, "maker", "other"], dtype="string")
+    with pytest.raises(SchemaError):
+        sc.validate_fills(df)
 
 
 @pytest.mark.parametrize("schema", [sc.TRADES, sc.BARS_1M, sc.FILLS])

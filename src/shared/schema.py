@@ -101,7 +101,7 @@ BARS_1M = TableSchema(
     key=("symbol", "ts"),
 )
 
-# 잠정 스키마 — aoa 원본 매핑 확인(T-20261002-07) 후 갱신.
+# aoa 원본 매핑 확인(T-20261002-07) 후 확정(T-20261009-12). 뒤 4열은 aoa 원본 전용(synthetic 은 null).
 FILLS = TableSchema(
     name="fills",
     columns=(
@@ -116,9 +116,12 @@ FILLS = TableSchema(
         ColumnSpec("source", STRING, allowed=SOURCES),
         ColumnSpec("source_id", STRING, nullable=True),
         ColumnSpec("strategy_id", STRING, nullable=True),
+        ColumnSpec("order_id", STRING, nullable=True),
+        ColumnSpec("liquidity", STRING, nullable=True, allowed=LIQUIDITY),
+        ColumnSpec("ord_type", STRING, nullable=True),
+        ColumnSpec("trd_match_id", STRING, nullable=True),
     ),
     key=("source", "source_id"),
-    key_exempt=(("source", "aoa"),),
 )
 
 # 라운드트립(진입 1회 + 청산 1회 = 1행). 설계 근거: phase2-synthetic-strategy.md "라운드트립 스키마".

@@ -378,6 +378,10 @@ def roundtrips_to_fills(rt: pd.DataFrame) -> pd.DataFrame:
             "source": "synthetic",
             "source_id": (base + f":{tag}").to_numpy(),
             "strategy_id": rt["strategy_id"].to_numpy(),
+            "order_id": pd.NA,
+            "liquidity": pd.NA,
+            "ord_type": pd.NA,
+            "trd_match_id": pd.NA,
         })
 
     entry = leg(rt["entry_ts"], np.where(is_long, "buy", "sell"), rt["entry_price"], "entry")
