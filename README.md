@@ -26,7 +26,7 @@ AgentTrading/
 │   ├── ingest/      공개 거래 기록 수집·정규화 → data/raw
 │   ├── analysis/    거래 패턴 정량화 (진입·청산·보유시간·사이징·레버리지)
 │   ├── backtest/    체결/수수료/슬리피지 포함 백테스트 엔진
-│   ├── agent/       시그널 생성 + 주문 실행 (페이퍼 먼저)
+│   ├── agent/       트레이딩 콘솔: Bybit v5 클라이언트·리스크 검사·킬스위치·감사 로그
 │   ├── ui/          사용자 대시보드 (Streamlit, 읽기 전용, 127.0.0.1)
 │   └── shared/      공통 모델·설정·로깅
 ├── config/          설정 (실제 키는 .env, 커밋 금지)
@@ -142,6 +142,23 @@ python -m src.backtest.run --start 2020-03-01 --end 2020-04-01 --fee-profile byb
 - **최종 판정 아님** — 단일 구간 3기준 판정이다. 워크포워드·DSR(`--walkforward`)과 OOS 1회 평가(`--oos-final`)는 후속. 펀딩·강제청산 미모델링.
 
 로드맵과 단계별 완료 기준은 Obsidian `Projects/work/AgentTrading/task/todo.md` 참고.
+
+## 트레이딩 콘솔 — Bybit DEMO/LIVE 수동 매매
+
+`scripts/ui.sh` → http://127.0.0.1:8501 의 **트레이딩** 묶음(트레이딩·리스크·계정·연결·거래 기록).
+사람이 판단해 주문하는 콘솔이다. 자동 전략 매매는 하지 않는다(그건 Spec 게이트 통과 후).
+
+1. Bybit 가입·KYC → Demo Trading 전환 → Demo API 키 발급(주문·포지션 권한만, **출금 끔**)
+2. `cp .env.example .env` 후 `BYBIT_DEMO_API_KEY`·`BYBIT_DEMO_API_SECRET` 입력 → `scripts/ui.sh` 재시작
+3. **리스크** 화면에서 한도 4개(최대 레버리지·포지션 규모·1회 손실·일 손실) 입력 — 기본값이 없어 입력 전에는 주문이 막힌다
+4. **트레이딩** 화면: 주문 입력 → 미리보기·리스크 검사 → 주문 실행. 손절가 필수(거래소 측 손절로 함께 걸림)
+5. 실거래: 메인넷 서브계정에 투입 금액만 두고 그 계정 API 키(출금 끔·IP 제한 권장)를
+   `BYBIT_LIVE_API_KEY`·`BYBIT_LIVE_API_SECRET` 에, `AT_LIVE_ENABLED=1` → **계정·연결** 화면에서 확인 후 LIVE 전환.
+   LIVE 주문은 매번 확인 체크가 필요하고 화면 위에 빨간 띠가 뜬다.
+
+- 킬스위치(리스크 화면): 정지 플래그 → 전 미체결 취소 → 포지션 시장가 청산. 재개 전까지 신규 주문 거부.
+- 상태·감사 로그 `data/agent/`(정지 플래그·모드·`audit.jsonl`), 한도 `config/risk.yaml` — 둘 다 git 제외.
+- 리스크 검사 항목·설계: Obsidian `Projects/work/AgentTrading/design/trading-console.md`.
 
 ## 사용자 대시보드 — 읽기 전용 결과 화면
 

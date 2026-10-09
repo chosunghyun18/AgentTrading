@@ -24,3 +24,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .env
+
+# 트레이딩 콘솔 상태(감사 로그·정지 플래그·모드)·리스크 한도 — 사용자 값, 커밋 금지
+data/agent/
+config/risk.yaml

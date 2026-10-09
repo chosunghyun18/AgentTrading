@@ -96,3 +96,21 @@ def candle_fig(bars: pd.DataFrame, trade: Mapping) -> go.Figure:
         if v is not None and pd.notna(v):
             f.add_hline(y=float(v), line=dict(color=color, dash="dot", width=1))
     return f
+
+
+def live_candle_fig(klines: list[list[str]], position: Mapping | None = None, symbol: str = "BTCUSDT") -> go.Figure:
+    """Bybit kline(최신 → 과거) 캔들 + 포지션 평균가·손절·익절 수평선."""
+    df = pd.DataFrame(klines, columns=["start", "open", "high", "low", "close", "volume", "turnover"]).iloc[::-1]
+    ts = pd.to_datetime(df["start"].astype("int64"), unit="ms", utc=True)
+    f = _fig(f"{symbol} 1분봉", height=420, xaxis=dict(rangeslider=dict(visible=False)))
+    f.add_trace(go.Candlestick(x=ts, open=df["open"].astype(float), high=df["high"].astype(float),
+                               low=df["low"].astype(float), close=df["close"].astype(float), name="BTCUSDT",
+                               increasing_line_color=theme.SUCCESS, decreasing_line_color=theme.DANGER))
+    if position:
+        for key, color, label in (("avgPrice", theme.PRIMARY, "평균가"), ("stopLoss", theme.DANGER, "손절"),
+                                  ("takeProfit", theme.SUCCESS, "익절")):
+            v = position.get(key)
+            if v not in (None, "") and float(v) > 0:
+                f.add_hline(y=float(v), line=dict(color=color, dash="dot", width=1.5),
+                            annotation_text=label, annotation_position="right")
+    return f

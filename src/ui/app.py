@@ -1,6 +1,7 @@
-"""AgentTrading 사용자 대시보드(읽기 전용, 127.0.0.1 전용). 실행: `scripts/ui.sh`.
+"""AgentTrading 콘솔(127.0.0.1 전용). 실행: `scripts/ui.sh`.
 
-주문·설정 변경·백테스트 실행 기능이 없다. 산출물 파일만 읽는다. 설계: Obsidian `design/user-dashboard.md`.
+- 트레이딩: Bybit DEMO/LIVE 수동 주문·리스크 한도·킬스위치 — 설계 Obsidian `design/trading-console.md`
+- 백테스트 분석: 산출물 파일만 읽는 읽기 전용 화면 — 설계 Obsidian `design/user-dashboard.md`
 """
 
 import sys
@@ -15,11 +16,19 @@ import streamlit as st  # noqa: E402
 PAGES = Path(__file__).resolve().parent / "views"  # `pages/` 는 Streamlit 이 자동 멀티페이지로 잡아 app.py 를 건너뛴다
 
 st.set_page_config(page_title="AgentTrading", page_icon=":material/monitoring:", layout="wide")
-nav = st.navigation([
-    st.Page(PAGES / "overview.py", title="개요", icon=":material/dashboard:", default=True),
-    st.Page(PAGES / "walkforward.py", title="워크포워드", icon=":material/timeline:"),
-    st.Page(PAGES / "explore.py", title="전략 탐색", icon=":material/scatter_plot:"),
-    st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
-])
-st.sidebar.caption("읽기 전용 · 127.0.0.1 · 주문 기능 없음")
+nav = st.navigation({
+    "트레이딩": [
+        st.Page(PAGES / "console_trade.py", title="트레이딩", icon=":material/swap_vert:", default=True),
+        st.Page(PAGES / "console_risk.py", title="리스크", icon=":material/shield:"),
+        st.Page(PAGES / "console_account.py", title="계정·연결", icon=":material/key:"),
+        st.Page(PAGES / "console_history.py", title="거래 기록", icon=":material/receipt_long:"),
+    ],
+    "백테스트 분석": [
+        st.Page(PAGES / "overview.py", title="개요", icon=":material/dashboard:"),
+        st.Page(PAGES / "walkforward.py", title="워크포워드", icon=":material/timeline:"),
+        st.Page(PAGES / "explore.py", title="전략 탐색", icon=":material/scatter_plot:"),
+        st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
+    ],
+})
+st.sidebar.caption("127.0.0.1 전용 · 주문은 리스크 검사 통과 후에만 · 자동 매매 없음")
 nav.run()
