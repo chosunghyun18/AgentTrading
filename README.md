@@ -26,7 +26,7 @@ AgentTrading/
 │   ├── ingest/      공개 거래 기록 수집·정규화 → data/raw
 │   ├── analysis/    거래 패턴 정량화 (진입·청산·보유시간·사이징·레버리지)
 │   ├── backtest/    체결/수수료/슬리피지 포함 백테스트 엔진
-│   ├── agent/       트레이딩 콘솔: Bybit v5 클라이언트·리스크 검사·킬스위치·감사 로그
+│   ├── agent/       전략 레지스트리·Bybit v5 클라이언트·리스크 검사·킬스위치·감사 로그
 │   ├── ui/          사용자 대시보드 (Streamlit, 읽기 전용, 127.0.0.1)
 │   └── shared/      공통 모델·설정·로깅
 ├── config/          설정 (실제 키는 .env, 커밋 금지)
@@ -145,22 +145,22 @@ python -m src.backtest.run --start 2020-03-01 --end 2020-04-01 --fee-profile byb
 
 로드맵과 단계별 완료 기준은 Obsidian `Projects/work/AgentTrading/task/todo.md` 참고.
 
-## 트레이딩 콘솔 — Bybit DEMO/LIVE 수동 매매
+## 에이전트 관리 화면 — 전략·모니터·리스크 (수동 주문 없음)
 
-`scripts/ui.sh` → http://127.0.0.1:8501 의 **트레이딩** 묶음(트레이딩·리스크·계정·연결·거래 기록).
-사람이 판단해 주문하는 콘솔이다. 자동 전략 매매는 하지 않는다(그건 Spec 게이트 통과 후).
+`scripts/ui.sh` → http://127.0.0.1:8501 의 **에이전트** 묶음. 수동 주문·청산·취소 기능은 없다(2026-10-09 사용자 지시).
 
-1. Bybit 가입·KYC → Demo Trading 전환 → Demo API 키 발급(주문·포지션 권한만, **출금 끔**)
-2. `cp .env.example .env` 후 `BYBIT_DEMO_API_KEY`·`BYBIT_DEMO_API_SECRET` 입력 → `scripts/ui.sh` 재시작
-3. **리스크** 화면에서 한도 4개(최대 레버리지·포지션 규모·1회 손실·일 손실) 입력 — 기본값이 없어 입력 전에는 주문이 막힌다
-4. **트레이딩** 화면: 주문 입력 → 미리보기·리스크 검사 → 주문 실행. 손절가 필수(거래소 측 손절로 함께 걸림)
-5. 실거래: 메인넷 서브계정에 투입 금액만 두고 그 계정 API 키(출금 끔·IP 제한 권장)를
-   `BYBIT_LIVE_API_KEY`·`BYBIT_LIVE_API_SECRET` 에, `AT_LIVE_ENABLED=1` → **계정·연결** 화면에서 확인 후 LIVE 전환.
-   LIVE 주문은 매번 확인 체크가 필요하고 화면 위에 빨간 띠가 뜬다.
+| 화면 | 내용 |
+|---|---|
+| 전략 (첫 화면) | 에이전트가 지금 쓰는 전략(관문을 모두 통과한 전략이 없으면 "없음 · 미가동"), 전략별 관문 진행표(설계 → 근거 데이터 검증 → 구현 → 워크포워드 → OOS → 페이퍼 8주 → 실거래), 전략 카드(진입·청산·크기 규칙, 근거, 파라미터, 워크포워드 결과와 고른 규칙 문장) |
+| 모니터 | Bybit 시세·1분봉·포지션·미체결 (읽기 전용) |
+| 리스크 | 한도 설정(에이전트 주문에 적용), 오늘 사용률, **킬스위치**(비상 정지: 전 주문 취소·포지션 청산·신규 차단) |
+| 계정·연결 | DEMO/LIVE 모드, 키 상태(뒤 4자리), 잔고, 키 권한 점검(출금 권한 키는 LIVE 차단) |
+| 거래 기록 | 체결·실현 손익·감사 로그 |
 
-- 킬스위치(리스크 화면): 정지 플래그 → 전 미체결 취소 → 포지션 시장가 청산. 재개 전까지 신규 주문 거부.
-- 상태·감사 로그 `data/agent/`(정지 플래그·모드·`audit.jsonl`), 한도 `config/risk.yaml` — 둘 다 git 제외.
-- 리스크 검사 항목·설계: Obsidian `Projects/work/AgentTrading/design/trading-console.md`.
+- 전략 목록: `src/agent/strategies.py`. 볼트 설계 문서가 기준 — 문서 `status` 와 다르면 `tests/test_agent_strategies.py` 실패.
+- 키: `cp .env.example .env` 후 Bybit Demo/Live 키(출금 권한 끔). LIVE 는 `AT_LIVE_ENABLED=1` + LIVE 키 + 화면 확인.
+- 주문 경로(`TradingService.place_order`, 리스크 사전 검사 포함)는 에이전트용으로 남아 있고 화면에서는 부르지 않는다.
+- 상태·감사 로그 `data/agent/`, 한도 `config/risk.yaml` — git 제외. 설계: Obsidian `design/agent-strategy-page.md`, `design/trading-console.md`.
 
 ## 사용자 대시보드 — 읽기 전용 결과 화면
 

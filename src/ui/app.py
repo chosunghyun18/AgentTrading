@@ -1,6 +1,7 @@
 """AgentTrading 콘솔(127.0.0.1 전용). 실행: `scripts/ui.sh`.
 
-- 트레이딩: Bybit DEMO/LIVE 수동 주문·리스크 한도·킬스위치 — 설계 Obsidian `design/trading-console.md`
+- 에이전트: 전략(무엇으로 거래하나)·모니터·리스크 한도·킬스위치·계정·기록. 수동 주문 없음 — 설계 Obsidian
+  `design/agent-strategy-page.md`, `design/trading-console.md`
 - 백테스트 분석: 산출물 파일만 읽는 읽기 전용 화면 — 설계 Obsidian `design/user-dashboard.md`
 """
 
@@ -17,8 +18,9 @@ PAGES = Path(__file__).resolve().parent / "views"  # `pages/` 는 Streamlit 이 
 
 st.set_page_config(page_title="AgentTrading", page_icon=":material/monitoring:", layout="wide")
 nav = st.navigation({
-    "트레이딩": [
-        st.Page(PAGES / "console_trade.py", title="트레이딩", icon=":material/swap_vert:", default=True),
+    "에이전트": [
+        st.Page(PAGES / "strategy.py", title="전략", icon=":material/psychology:", default=True),
+        st.Page(PAGES / "console_monitor.py", title="모니터", icon=":material/monitor_heart:"),
         st.Page(PAGES / "console_risk.py", title="리스크", icon=":material/shield:"),
         st.Page(PAGES / "console_account.py", title="계정·연결", icon=":material/key:"),
         st.Page(PAGES / "console_history.py", title="거래 기록", icon=":material/receipt_long:"),
@@ -30,5 +32,5 @@ nav = st.navigation({
         st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
     ],
 })
-st.sidebar.caption("127.0.0.1 전용 · 주문은 리스크 검사 통과 후에만 · 자동 매매 없음")
+st.sidebar.caption("127.0.0.1 전용 · 수동 주문 없음 · 에이전트는 관문을 모두 통과한 전략만 쓴다")
 nav.run()

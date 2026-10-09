@@ -42,50 +42,24 @@ def _btn(at, label):
     return next(b for b in at.button if b.label == label)
 
 
-def _fill_order(at, side="Buy", qty=0.01, sl=79_600.0, tp=81_000.0, lev=2):
-    at.radio(key="o-side").set_value(side)
-    at.number_input(key="o-qty").set_value(qty)
-    at.number_input(key="o-lev").set_value(lev)
-    at.number_input(key="o-sl").set_value(sl)
-    at.number_input(key="o-tp").set_value(tp)
-    _btn(at, "미리보기 · 리스크 검사").click().run()
-    assert not at.exception, [e.value for e in at.exception]
-    return at
-
-
-def test_trade_without_limits_is_blocked(world):
-    at = _fill_order(_run("console_trade.py"))
-    assert "한도 미설정" in _text(at.error)
-    assert all(c[0] != "create_order" for c in world["clients"]["demo"].calls)
-
-
-def test_trade_preview_then_place(world):
-    risk.save_limits(world["risk"], LIM)
-    at = _fill_order(_run("console_trade.py"))
-    assert "검사 통과" in _text(at.success)
-    at.button(key="order-btn").click().run()
-    assert not at.exception
-    assert "주문 접수" in _text(at.success)
-    calls = [c for c in world["clients"]["demo"].calls if c[0] == "create_order"]
-    assert len(calls) == 1 and calls[0][1]["stopLoss"] == "79600"
-    assert "DEMO" in _text(at.markdown)
-
-
-def test_trade_rejects_bad_stop(world):
-    risk.save_limits(world["risk"], LIM)
-    at = _fill_order(_run("console_trade.py"), sl=80_500.0)
-    assert "매수 손절가" in _text(at.error)
-    assert not any(getattr(b, "key", None) == "order-btn" for b in at.button)
-
-
-def test_close_position(world):
+def test_monitor_is_read_only(world):
     c = world["clients"]["demo"]
     c.pos.update(side="Buy", size="0.01", avgPrice="80000", unrealisedPnl="1")
-    at = _run("console_trade.py")
-    at.checkbox(key="close-confirm").check().run()
-    at.button(key="close-btn").click().run()
-    assert not at.exception and "청산 주문" in _text(at.success)
-    assert c.pos["size"] == "0"
+    c.orders.append({"orderId": "o1", "side": "Buy", "orderType": "Limit", "price": "79000", "qty": "0.01"})
+    at = _run("console_monitor.py")
+    assert len(at.button) == 0 and len(at.number_input) == 0 and len(at.checkbox) == 0  # 주문·청산·취소 없음
+    assert len(at.dataframe) == 1  # 미체결 표
+    assert "미가동" in _text(at.caption) and "DEMO" in _text(at.markdown)
+    assert not [x for x in c.calls if x[0] in ("create_order", "cancel_all", "cancel_order", "set_leverage")]
+
+
+def test_no_manual_order_page():
+    from pathlib import Path
+    views = Path(__file__).resolve().parents[1] / "src" / "ui" / "views"
+    assert not (views / "console_trade.py").exists()
+    for p in views.glob("*.py"):  # 화면 어디에서도 주문 함수를 부르지 않는다
+        src = p.read_text(encoding="utf-8")
+        assert "place_order" not in src and "close_position" not in src and "cancel_order" not in src, p.name
 
 
 def test_no_keys_shows_guide(world):
@@ -111,15 +85,8 @@ def test_live_switch_requires_unlock_and_ack(world, monkeypatch):
     at.checkbox(key="live-ack").check().run()
     at.button(key="to-live").click().run()
     assert settings.get_mode() == "live"
-    at = _run("console_trade.py")
+    at = _run("console_monitor.py")
     assert "LIVE" in _text(at.markdown)
-    risk.save_limits(world["risk"], LIM)
-    at = _fill_order(at)
-    assert at.button(key="order-btn").disabled  # LIVE 는 확인 체크 필요
-    at.checkbox(key="live-confirm").check().run()
-    at.button(key="order-btn").click().run()
-    assert [c for c in world["clients"]["live"].calls if c[0] == "create_order"]
-    assert not [c for c in world["clients"]["demo"].calls if c[0] == "create_order"]
 
 
 def test_risk_limits_and_kill_switch(world):
@@ -160,7 +127,7 @@ def test_exchange_error_shown_not_crash(world):
     from src.agent.bybit import BybitError
     c = world["clients"]["demo"]
     c.ticker = lambda s: (_ for _ in ()).throw(BybitError(10002, "timeout", "/v5/market/tickers"))
-    at = _run("console_trade.py")
+    at = _run("console_monitor.py")
     assert "시세 조회 실패" in _text(at.error)
 
 
