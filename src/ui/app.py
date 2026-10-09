@@ -1,0 +1,25 @@
+"""AgentTrading 사용자 대시보드(읽기 전용, 127.0.0.1 전용). 실행: `scripts/ui.sh`.
+
+주문·설정 변경·백테스트 실행 기능이 없다. 산출물 파일만 읽는다. 설계: Obsidian `design/user-dashboard.md`.
+"""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:  # `streamlit run src/ui/app.py` 는 스크립트 폴더만 sys.path 에 넣는다
+    sys.path.insert(0, str(ROOT))
+
+import streamlit as st  # noqa: E402
+
+PAGES = Path(__file__).resolve().parent / "views"  # `pages/` 는 Streamlit 이 자동 멀티페이지로 잡아 app.py 를 건너뛴다
+
+st.set_page_config(page_title="AgentTrading", page_icon=":material/monitoring:", layout="wide")
+nav = st.navigation([
+    st.Page(PAGES / "overview.py", title="개요", icon=":material/dashboard:", default=True),
+    st.Page(PAGES / "walkforward.py", title="워크포워드", icon=":material/timeline:"),
+    st.Page(PAGES / "explore.py", title="전략 탐색", icon=":material/scatter_plot:"),
+    st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
+])
+st.sidebar.caption("읽기 전용 · 127.0.0.1 · 주문 기능 없음")
+nav.run()

@@ -27,6 +27,7 @@ AgentTrading/
 │   ├── analysis/    거래 패턴 정량화 (진입·청산·보유시간·사이징·레버리지)
 │   ├── backtest/    체결/수수료/슬리피지 포함 백테스트 엔진
 │   ├── agent/       시그널 생성 + 주문 실행 (페이퍼 먼저)
+│   ├── ui/          사용자 대시보드 (Streamlit, 읽기 전용, 127.0.0.1)
 │   └── shared/      공통 모델·설정·로깅
 ├── config/          설정 (실제 키는 .env, 커밋 금지)
 ├── data/raw/        원본 거래 기록 (커밋 금지)
@@ -141,6 +142,30 @@ python -m src.backtest.run --start 2020-03-01 --end 2020-04-01 --fee-profile byb
 - **최종 판정 아님** — 단일 구간 3기준 판정이다. 워크포워드·DSR(`--walkforward`)과 OOS 1회 평가(`--oos-final`)는 후속. 펀딩·강제청산 미모델링.
 
 로드맵과 단계별 완료 기준은 Obsidian `Projects/work/AgentTrading/task/todo.md` 참고.
+
+## 사용자 대시보드 — 읽기 전용 결과 화면
+
+판정·폴드·run 그리드·거래를 브라우저로 본다. 산출물 파일만 읽고 주문·설정 변경·백테스트 실행 기능은 없다.
+기본 표본 밖(OOS 2022~2024) 1분봉·거래는 읽지 않는다. autodev 진행 화면(8765)과는 별개다.
+
+```bash
+# 1) 워크포워드 검증 자본곡선·거래 목록 만들기 (판정 리포트를 다시 계산, 수 초~수 분)
+python -m src.backtest.export_equity          # → walkforward/default+funding.{equity,trades}.parquet
+# 2) 서버 실행 → http://127.0.0.1:8501
+scripts/ui.sh                                 # PORT=8502 scripts/ui.sh 로 포트 변경
+```
+
+| 페이지 | 내용 |
+|---|---|
+| 개요 | 게이트 KPI 4개(거래·Sharpe·MDD·DSR), 검증 자본곡선, 폴드별 net·트리거별 통과·학습 vs 검증, 최근 거래·사람 할 일·Phase 진행 |
+| 워크포워드 | 폴드 표, 자본곡선, DSR·실행 조건 (default/bybit 전환) |
+| 전략 탐색 | 구간·프로필별 run 표·필터, Sharpe–MDD 산점도 |
+| 거래 상세 | 워크포워드 검증 거래 또는 구간 run 의 거래 표, 거래 전후(≤ 24h) 1분봉 캔들 |
+
+- `export_equity` 는 재구성한 곡선이 리포트 `stitched` 와 1e-9 안에서 같을 때만 파일을 쓴다(다르면 종료코드 1).
+- 경로는 환경변수로 바꿀 수 있다: `AT_OUT_DIR`(기본 `data/out/backtest`), `AT_DATA_DIR`(정규화 데이터),
+  `AT_VAULT_DIR`(볼트 프로젝트 폴더 — 사람 할 일·Phase 진행 표시용, 없으면 비움).
+- 설계: Obsidian `Projects/work/AgentTrading/design/user-dashboard.md`.
 
 ## 개발
 

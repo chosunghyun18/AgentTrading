@@ -1,0 +1,29 @@
+# AgentTrading 사용자 대시보드 — 로컬 전용(127.0.0.1). 디자인 값은 src/ui/theme.py 와 같아야 한다.
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+
+[browser]
+gatherUsageStats = false
+serverAddress = "127.0.0.1"
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#409EFF"
+backgroundColor = "#f0f2f5"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#303133"
+redColor = "#F56C6C"
+greenColor = "#67C23A"
+orangeColor = "#E6A23C"
+blueColor = "#409EFF"
+grayColor = "#909399"
+
+[theme.sidebar]
+backgroundColor = "#304156"
+textColor = "#bfcbd9"
+primaryColor = "#409EFF"
