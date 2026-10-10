@@ -265,8 +265,9 @@ def test_roundtrips_definition_matches_doc():
     allowed = {c.name: c.allowed for c in sc.ROUNDTRIPS.columns if c.allowed is not None}
     assert allowed == {
         "side": {"long", "short"},
-        "entry_reason": {"h1_breakout", "h2_momentum", "h3_meanrev"},
-        "exit_reason": {"stop", "take_profit", "time", "end_of_data"},
+        # c1 값은 design/phase3-c1-meanrev-maker.md "스키마·코드 대응"(T-20261009-17)
+        "entry_reason": {"h1_breakout", "h2_momentum", "h3_meanrev", "c1_meanrev_limit", "c1_meanrev_market"},
+        "exit_reason": {"stop", "take_profit", "time", "end_of_data", "mean_revert"},
     }
 
 

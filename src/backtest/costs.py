@@ -12,7 +12,7 @@
 
 | 항목 | 정의 |
 |---|---|
-| 유동성 | 진입 taker. 청산 `take_profit` → maker, 그 외(`stop`·`time`·`end_of_data`) → taker |
+| 유동성 | 진입 taker, 단 `entry_reason ∈ MAKER_ENTRY_REASONS`(c1 지정가) → maker. 청산 `take_profit` → maker, 그 외 → taker |
 | 슬리피지 | `b = slippage_bps / 10_000`(maker 는 0). 매수 `p × (1 + b)`, 매도 `p × (1 − b)` |
 | 매수/매도 | 롱 진입·숏 청산 = 매수, 숏 진입·롱 청산 = 매도 |
 | 수수료 | `fee_xbt = qty / entry_fill × rate_entry + qty / exit_fill × rate_exit` (인버스, XBT) |
@@ -48,6 +48,8 @@ from src.shared.schema import (
 )
 
 PROFILE_KEYS = ("taker_fee", "maker_fee", "slippage_bps")
+# 진입이 maker(수수료 maker_fee·슬리피지 0)인 진입 사유. c1 체결 모델(Obsidian design/phase3-c1-meanrev-maker.md).
+MAKER_ENTRY_REASONS = frozenset({"c1_meanrev_limit"})
 
 PROFILES: dict[str, dict[str, float]] = {
     "default": {"taker_fee": 0.0004, "maker_fee": 0.0002, "slippage_bps": 2.0},
@@ -101,26 +103,29 @@ def apply_costs(roundtrips: pd.DataFrame, profile: str | Mapping) -> pd.DataFram
     out = roundtrips.copy()
     b = prof["slippage_bps"] / 10_000
     long = (out["side"] == "long").to_numpy(dtype=bool)
+    maker_entry = out["entry_reason"].isin(MAKER_ENTRY_REASONS).to_numpy(dtype=bool)
     maker_exit = (out["exit_reason"] == "take_profit").to_numpy(dtype=bool)
     qty = out["qty"].to_numpy(dtype=float)
     p_in = out["entry_price"].to_numpy(dtype=float)
     p_out = out["exit_price"].to_numpy(dtype=float)
 
-    # 진입: 롱 = 매수(+), 숏 = 매도(−). 청산은 반대 방향, maker 면 b = 0.
+    # 진입: 롱 = 매수(+), 숏 = 매도(−). 청산은 반대 방향, maker 면 b = 0(행별 — taker 행은 v1 과 같은 값·같은 연산).
     sign_in = np.where(long, 1.0, -1.0)
+    b_in = np.where(maker_entry, 0.0, b)
     b_out = np.where(maker_exit, 0.0, b)
-    entry_fill = p_in * (1 + sign_in * b)
+    entry_fill = p_in * (1 + sign_in * b_in)
     exit_fill = p_out * (1 - sign_in * b_out)
 
+    rate_in = np.where(maker_entry, prof["maker_fee"], prof["taker_fee"])
     rate_out = np.where(maker_exit, prof["maker_fee"], prof["taker_fee"])
-    fee = qty / entry_fill * prof["taker_fee"] + qty / exit_fill * rate_out
+    fee = qty / entry_fill * rate_in + qty / exit_fill * rate_out
     fill_pnl = np.where(long,
                         qty * (1 / entry_fill - 1 / exit_fill),
                         qty * (1 / exit_fill - 1 / entry_fill))
     gross = out["gross_pnl_xbt"].to_numpy(dtype=float)
     net = fill_pnl - fee
 
-    out["entry_liquidity"] = pd.array(["taker"] * len(out), dtype="string")
+    out["entry_liquidity"] = pd.array(np.where(maker_entry, "maker", "taker"), dtype="string")
     out["exit_liquidity"] = pd.array(np.where(maker_exit, "maker", "taker"), dtype="string")
     out["entry_fill_price"] = entry_fill
     out["exit_fill_price"] = exit_fill
