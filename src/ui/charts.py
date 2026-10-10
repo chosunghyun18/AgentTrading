@@ -114,3 +114,54 @@ def live_candle_fig(klines: list[list[str]], position: Mapping | None = None, sy
                 f.add_hline(y=float(v), line=dict(color=color, dash="dot", width=1.5),
                             annotation_text=label, annotation_position="right")
     return f
+
+
+# 진단(B) ----------------------------------------------------------------------------------------------
+
+def _trigger_colors(triggers) -> dict[str, str]:
+    return {t: theme.KPI_COLORS[i % len(theme.KPI_COLORS)] for i, t in enumerate(sorted(set(map(str, triggers))))}
+
+
+def trigger_sharpe_fig(stats: pd.DataFrame, phase_label: str) -> go.Figure:
+    """폴드별 트리거 Sharpe 중앙(r1) 막대 — 트리거당 trace 1개."""
+    f = _fig(f"폴드 × 트리거 Sharpe 중앙 (r1 · {phase_label})", barmode="group")
+    colors = _trigger_colors(stats["트리거"]) if len(stats) else {}
+    for trig, g in stats.groupby("트리거", sort=True):
+        f.add_trace(go.Bar(x=[f"F{i}" for i in g["폴드"]], y=g["Sharpe 중앙(r1)"], name=str(trig),
+                           marker_color=colors[str(trig)]))
+    f.add_hline(y=0, line=dict(color=theme.INFO, dash="dot", width=1))
+    return f
+
+
+def divergence_fig(points: pd.DataFrame, fold: int, selected: tuple[str, str] | None = None) -> go.Figure:
+    """한 폴드의 학습 vs 검증 Sharpe 산점도(r1, 트리거 색) + y=x 선 + 선택 run 별표."""
+    f = _fig(f"F{fold} 학습 vs 검증 Sharpe (r1)", height=420,
+             xaxis=dict(title="학습 Sharpe"), yaxis=dict(title="검증 Sharpe"))
+    r1 = points[points["risk_pct"] == 1.0]
+    colors = _trigger_colors(r1["trigger"]) if len(r1) else {}
+    for trig, g in r1.groupby("trigger", sort=True):
+        f.add_trace(go.Scattergl(x=g["train_sharpe"], y=g["test_sharpe"], mode="markers", name=f"{trig} ({len(g)})",
+                                 marker=dict(color=colors[str(trig)], size=6, opacity=0.7),
+                                 customdata=g[["param_id"]].to_numpy(),
+                                 hovertemplate="%{customdata[0]}<br>학습 %{x:.2f} · 검증 %{y:.2f}<extra></extra>"))
+    vals = pd.concat([r1["train_sharpe"], r1["test_sharpe"]]).astype(float)
+    vals = vals[vals.notna() & (vals.abs() != float("inf"))]
+    if len(vals):
+        lo, hi = float(vals.min()), float(vals.max())
+        f.add_shape(type="line", x0=lo, y0=lo, x1=hi, y1=hi, line=dict(color=theme.INFO, dash="dot", width=1))
+    if selected:
+        s = points[(points["strategy_id"] == selected[0]) & (points["param_id"] == selected[1])]
+        if len(s):
+            f.add_trace(go.Scatter(x=s["train_sharpe"], y=s["test_sharpe"], mode="markers", name="선택",
+                                   marker=dict(symbol="star", size=16, color=theme.DANGER,
+                                               line=dict(width=1, color="#fff"))))
+    return f
+
+
+def erosion_fig(erosion: pd.DataFrame, phase_label: str) -> go.Figure:
+    """폴드별 gross>0 vs net>0 비율(r1, 한 구간, "전체" 행 제외)."""
+    e = erosion[(erosion["구간"] == phase_label) & (erosion["폴드"] != "전체")]
+    f = _fig(f"비용 전후 수익 run 비율 (r1 · {phase_label})", barmode="group", yaxis=dict(tickformat=".0%"))
+    for col, color in (("gross>0", theme.KPI_COLORS[1]), ("net>0", theme.KPI_COLORS[2])):
+        f.add_trace(go.Bar(x=e["폴드"], y=e[col], name=col, marker_color=color))
+    return f

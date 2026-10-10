@@ -6,9 +6,10 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+from src.backtest import diagnose as dg
 from src.backtest import export_equity as ee
 from src.backtest import run as br
-from src.ingest.normalize import save_manifest
+from src.ingest.normalize import save_manifest, write_parquet_atomic
 from tests.test_backtest_run import write_days
 from tests.test_backtest_wfengine import FOLDS, LOOSE, PARAMS, SAMPLE, SYM
 
@@ -43,6 +44,9 @@ def build(root: Path) -> dict[str, Path]:
     path.write_text(json.dumps(br.build_walkforward_report(rep, SYM, {"trigger": GRID["trigger"]}),
                                allow_nan=True), encoding="utf-8")
     assert ee.main(["--report", str(path), "--data-dir", str(norm)]) == 0
+    # 진단: 리포트와 같은 폴드·run·게이트·표본 → 정합 "일치". 리포트 펀딩 끔 → folds.parquet
+    diag = dg.diagnose_folds(FOLDS, br.store_loader(SYM, norm), PARAMS, gate=LOOSE, sample=SAMPLE)
+    write_parquet_atomic(diag, dg.diagnose_path(out))
 
     tasks = vault / "task" / "autodev"
     tasks.mkdir(parents=True)

@@ -70,6 +70,11 @@ def _trade_bars(data_dir: str, sym: str, entry, exit_, pad: float):
     return ud.load_trade_bars(Path(data_dir), sym, entry, exit_, pad)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
+def _diagnose(p: str, mtime: float):
+    return pd.read_parquet(p)
+
+
 @st.cache_data(show_spinner=False, ttl=60)
 def _vault_tasks(vault: str):
     return ud.vault_tasks(Path(vault))
@@ -107,6 +112,12 @@ def roundtrips(profile: str, span: str, sid: str, pid: str) -> pd.DataFrame:
 
 def trade_bars(entry, exit_, pad: float) -> pd.DataFrame:
     return _trade_bars(str(path("AT_DATA_DIR")), symbol(), entry, exit_, pad)
+
+
+def diagnose(rep: dict) -> pd.DataFrame | None:
+    """리포트와 같은 펀딩 조건의 진단 프레임. 없으면 None."""
+    p = ud.diagnose_file(path("AT_OUT_DIR"), rep)
+    return _diagnose(str(p), _mtime(p)) if p.is_file() else None
 
 
 def vault_tasks() -> pd.DataFrame:

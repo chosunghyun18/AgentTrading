@@ -57,3 +57,21 @@ def test_candle_markers():
     assert [t.type for t in f.data] == ["candlestick", "scatter", "scatter"]
     assert f.data[1].marker.symbol == "triangle-down" and list(f.data[2].y) == [1.0]
     assert len(f.layout.shapes) == 1  # 손절만(익절 NaN 은 그리지 않음)
+
+
+def test_diagnose_figs():
+    stats = pd.DataFrame({"폴드": [1, 1, 2, 2], "트리거": ["h1", "h2", "h1", "h2"],
+                          "Sharpe 중앙(r1)": [-1.0, 0.5, -2.0, 0.1]})
+    f = charts.trigger_sharpe_fig(stats, "학습")
+    assert [t.name for t in f.data] == ["h1", "h2"] and list(f.data[1].x) == ["F1", "F2"]
+    pts = pd.DataFrame({"strategy_id": "s", "param_id": ["a", "b", "c"], "trigger": ["h1", "h2", "h2"],
+                        "risk_pct": [1.0, 1.0, 2.0], "train_sharpe": [1.0, 2.0, 3.0], "test_sharpe": [0.5, -1.0, 0.0],
+                        "candidate": True})
+    g = charts.divergence_fig(pts, 1, ("s", "b"))
+    assert [t.name for t in g.data] == ["h1 (1)", "h2 (1)", "선택"]  # r1 만, risk 2 제외
+    assert list(g.data[2].x) == [2.0] and len(g.layout.shapes) == 1  # y=x 선
+    assert len(charts.divergence_fig(pts, 1, ("s", "zz")).data) == 2
+    ero = pd.DataFrame({"폴드": ["F1", "전체", "F1", "전체"], "구간": ["학습", "학습", "검증", "검증"],
+                        "gross>0": [0.6, 0.6, 0.5, 0.5], "net>0": [0.1, 0.1, 0.05, 0.05]})
+    h = charts.erosion_fig(ero, "검증")
+    assert [t.name for t in h.data] == ["gross>0", "net>0"] and list(h.data[0].x) == ["F1"]

@@ -30,6 +30,7 @@ nav = st.navigation({
         st.Page(PAGES / "walkforward.py", title="워크포워드", icon=":material/timeline:"),
         st.Page(PAGES / "explore.py", title="전략 탐색", icon=":material/scatter_plot:"),
         st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
+        st.Page(PAGES / "diagnose.py", title="진단", icon=":material/troubleshoot:"),
     ],
 })
 st.sidebar.caption("127.0.0.1 전용 · 수동 주문 없음 · 에이전트는 관문을 모두 통과한 전략만 쓴다")

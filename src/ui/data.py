@@ -15,10 +15,12 @@ from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import yaml
 
+from src.backtest.diagnose import diagnose_path
 from src.backtest.export_equity import export_paths
 from src.backtest.walkforward import OOS_START, SAMPLE_START, check_sample_range
 from src.ingest import store
@@ -240,6 +242,155 @@ def coverage(data_dir: Path, symbol: str = "XBTUSD") -> dict:
     out["sample_days"] = len(sample)
     out["sample_missing"] = sum(1 for d in sample if d not in have)
     return out
+
+
+# 진단(B) — `diagnose/folds[+funding].parquet` 집계. 정의는 연구 문서 phase3-walkforward-fail-analysis 와 같다 ------
+# 모집단: 분포·비율·소진·게이트 충족·Spearman(r1)·백분위(r1) = risk_pct 1, 선택 후보 관련 = 전 run(select_params 와 같음).
+
+R1 = 1.0
+EXHAUSTED_RET = -0.99
+PHASE_LABELS = {"train": "학습", "test": "검증"}
+_TOL = 1e-9
+
+
+def diagnose_file(out_dir: Path, report: Mapping) -> Path:
+    """리포트와 같은 펀딩 조건의 진단 parquet 경로(`diagnose_path(funded=bool(meta.funding))`)."""
+    return diagnose_path(Path(out_dir), bool((report.get("meta") or {}).get("funding")))
+
+
+def load_diagnose(out_dir: Path, report: Mapping) -> pd.DataFrame | None:
+    p = diagnose_file(out_dir, report)
+    return pd.read_parquet(p) if p.is_file() else None
+
+
+def _candidate(df: pd.DataFrame, gate: Mapping) -> pd.Series:
+    """`walkforward.select_params` 후보 조건: 거래 ≥ min_trades · Sharpe 유한 · MDD ≤ max_drawdown(NaN 은 탈락)."""
+    sh = df["sharpe"].astype(float)
+    return (df["n_trades"] >= gate["min_trades"]) & np.isfinite(sh) & (df["mdd"].astype(float) <= gate["max_drawdown"])
+
+
+def _gate_pass(df: pd.DataFrame, gate: Mapping) -> pd.Series:
+    return _candidate(df, gate) & (df["sharpe"].astype(float) >= gate["min_sharpe"])
+
+
+def selections(report: Mapping) -> dict[int, tuple[str, str]]:
+    """진단 폴드 번호(리포트 인덱스 + 1) → 선택 (strategy_id, param_id). 선택 없음 폴드는 빠진다."""
+    return {i: (f["selection"]["strategy_id"], f["selection"]["param_id"])
+            for i, f in enumerate(report["folds"], 1) if f.get("selection")}
+
+
+def _close(a, b) -> bool:
+    a, b = _num(a), _num(b)
+    return (math.isnan(a) and math.isnan(b)) or abs(a - b) <= _TOL
+
+
+def diagnose_consistency(diag: pd.DataFrame, report: Mapping) -> dict:
+    """진단 검증 행의 선택 run 지표가 리포트 `folds[i].test.default` 와 같은지. `{ok, reason}`."""
+    n = len(report["folds"])
+    folds = sorted(int(f) for f in diag["fold"].unique())
+    if folds != list(range(1, n + 1)):
+        return {"ok": False, "reason": f"폴드가 다르다: 진단 {folds} · 리포트 {n}개"}
+    test = diag[diag["phase"] == "test"]
+    for i, (sid, pid) in selections(report).items():
+        hit = test[(test["fold"] == i) & (test["strategy_id"] == sid) & (test["param_id"] == pid)]
+        if len(hit) != 1:
+            return {"ok": False, "reason": f"폴드 {i} 선택 run 이 진단에 없다"}
+        row, ref = hit.iloc[0], report["folds"][i - 1]["test"]["default"]
+        if (int(row["n_trades"]) != int(ref["n_trades"]) or not _close(row["sharpe"], ref["sharpe"])
+                or not _close(row["total_net_ret"], ref["total_net_ret"])):
+            return {"ok": False, "reason": f"폴드 {i} 선택 run 검증 지표가 리포트와 다르다"}
+    return {"ok": True, "reason": "판정 리포트와 일치"}
+
+
+def _finite(s: pd.Series) -> pd.Series:
+    s = s.astype(float)
+    return s[np.isfinite(s)]
+
+
+def trigger_fold_stats(diag: pd.DataFrame, phase: str, gate: Mapping) -> pd.DataFrame:
+    """폴드 × 트리거 표(한 phase). 분포·비율은 r1, 선택 후보는 전 run."""
+    rows = []
+    for (fold, trig), g in diag[diag["phase"] == phase].groupby(["fold", "trigger"], sort=True):
+        r1 = g[g["risk_pct"] == R1]
+        sh = _finite(r1["sharpe"])
+        nan = float("nan")
+        rows.append({
+            "폴드": int(fold), "트리거": str(trig), "run(r1)": len(r1),
+            "Sharpe 중앙(r1)": float(sh.median()) if len(sh) else nan,
+            "Sharpe p90(r1)": float(sh.quantile(0.9)) if len(sh) else nan,
+            "net>0(r1)": float((r1["total_net_ret"] > 0).mean()) if len(r1) else nan,
+            "소진(r1)": float((r1["total_net_ret"] <= EXHAUSTED_RET).mean()) if len(r1) else nan,
+            "게이트 충족(r1)": int(_gate_pass(r1, gate).sum()),
+            "선택 후보(전 run)": int(_candidate(g, gate).sum()),
+        })
+    return pd.DataFrame(rows)
+
+
+def _spearman(a: pd.Series, b: pd.Series) -> float:
+    """동률 평균 순위 → Pearson(scipy 없이). 둘 중 하나라도 NaN·inf 인 쌍은 뺀다."""
+    a, b = a.astype(float).reset_index(drop=True), b.astype(float).reset_index(drop=True)
+    m = np.isfinite(a) & np.isfinite(b)
+    if int(m.sum()) < 2:
+        return float("nan")
+    return float(a[m].rank().corr(b[m].rank()))
+
+
+def train_test_points(diag: pd.DataFrame, fold: int, gate: Mapping) -> pd.DataFrame:
+    """한 폴드의 run 별 학습·검증 Sharpe(전 run) + 학습 기준 선택 후보 여부."""
+    d = diag[diag["fold"] == fold]
+    keys = ["strategy_id", "param_id"]
+    tr = d[d["phase"] == "train"]
+    te = d[d["phase"] == "test"][keys + ["sharpe"]].rename(columns={"sharpe": "test_sharpe"})
+    out = tr[keys + ["trigger", "risk_pct", "sharpe"]].rename(columns={"sharpe": "train_sharpe"})
+    out = out.assign(candidate=_candidate(tr, gate).to_numpy())
+    return out.merge(te, on=keys, how="inner", validate="one_to_one").reset_index(drop=True)
+
+
+def train_test_divergence(diag: pd.DataFrame, report: Mapping, gate: Mapping) -> pd.DataFrame:
+    """폴드별 학습↔검증 Spearman(r1·후보)·선택 run 학습→검증 Sharpe·하락폭·검증 백분위(strict `<`)."""
+    sels = selections(report)
+    nan = float("nan")
+    rows = []
+    for fold in sorted(int(f) for f in diag["fold"].unique()):
+        pts = train_test_points(diag, fold, gate)
+        r1, cand = pts[pts["risk_pct"] == R1], pts[pts["candidate"]]
+        row = {"폴드": fold, "Spearman(r1)": _spearman(r1["train_sharpe"], r1["test_sharpe"]),
+               "후보 수": len(cand), "Spearman(후보)": _spearman(cand["train_sharpe"], cand["test_sharpe"]),
+               "선택": NO_SELECTION, "선택 학습 Sharpe": nan, "선택 검증 Sharpe": nan, "하락폭": nan,
+               "검증 백분위(r1)": nan, "검증 백분위(후보)": nan}
+        sel = sels.get(fold)
+        hit = pts[(pts["strategy_id"] == sel[0]) & (pts["param_id"] == sel[1])] if sel else pts.iloc[:0]
+        if sel:
+            row["선택"] = sel[1]
+        if len(hit) == 1:
+            tr_s, te_s = float(hit["train_sharpe"].iloc[0]), float(hit["test_sharpe"].iloc[0])
+            row.update({"선택 학습 Sharpe": tr_s, "선택 검증 Sharpe": te_s, "하락폭": tr_s - te_s,
+                        "검증 백분위(r1)": float((r1["test_sharpe"] < te_s).mean()) if len(r1) else nan,
+                        "검증 백분위(후보)": float((cand["test_sharpe"] < te_s).mean()) if len(cand) else nan})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _erosion_row(label: str, phase: str, g: pd.DataFrame) -> dict:
+    gp, npos = g["total_gross_ret"] > 0, g["total_net_ret"] > 0
+    f = g["total_funding_xbt"].astype(float)
+    nan = float("nan")
+    return {"폴드": label, "구간": PHASE_LABELS[phase], "run(r1)": len(g),
+            "gross>0": float(gp.mean()) if len(g) else nan, "net>0": float(npos.mean()) if len(g) else nan,
+            "gross>0 중 net≤0": float((gp & ~npos).sum() / gp.sum()) if gp.sum() else nan,
+            "net−gross 중앙": float((g["total_net_ret"] - g["total_gross_ret"]).median()) if len(g) else nan,
+            "펀딩 XBT 중앙": float(f.median()) if f.notna().any() else nan}
+
+
+def cost_erosion(diag: pd.DataFrame) -> pd.DataFrame:
+    """폴드 × 학습/검증 비용·펀딩 잠식(r1) + phase 별 "전체"(전 폴드 행 단위 합산) 행. 펀딩 끔 → 펀딩 열 NaN."""
+    r1 = diag[diag["risk_pct"] == R1]
+    rows = []
+    for phase in PHASE_LABELS:
+        d = r1[r1["phase"] == phase]
+        rows += [_erosion_row(f"F{int(fold)}", phase, g) for fold, g in d.groupby("fold", sort=True)]
+        rows.append(_erosion_row("전체", phase, d))
+    return pd.DataFrame(rows)
 
 
 # 볼트 태스크(읽기 전용) ---------------------------------------------------------------------------------

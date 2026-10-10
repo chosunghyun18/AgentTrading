@@ -83,7 +83,8 @@ def test_trades_walkforward_and_span(env):
 
 
 @pytest.mark.parametrize("page, needle", [("overview.py", "판정 리포트가 없다"), ("walkforward.py", "판정 리포트가 없다"),
-                                          ("explore.py", "run 요약이 없다"), ("trades.py", "판정 리포트가 없다")])
+                                          ("explore.py", "run 요약이 없다"), ("trades.py", "판정 리포트가 없다"),
+                                          ("diagnose.py", "판정 리포트가 없다")])
 def test_empty_outputs_show_notice(empty_env, page, needle):
     at = _run(page)
     assert needle in _info(at)
@@ -139,3 +140,23 @@ def test_stale_equity_warning(env, tmp_path, monkeypatch):
     monkeypatch.setenv("AT_OUT_DIR", str(out))
     at = _run("overview.py")
     assert any("오래됐다" in w.value for w in at.warning)
+
+
+def test_diagnose(env):
+    at = _run("diagnose.py")
+    assert len(at.dataframe) == 3  # 폴드×트리거 · 괴리 · 잠식
+    assert "판정 리포트와 일치" in _md(at)
+    assert len(at.dataframe[1].value) == 2  # 픽스처 폴드 2개
+    at.radio(key="dg-phase").set_value("test").run()
+    assert not at.exception
+    at.selectbox(key="dg-fold").set_value(2).run()
+    assert not at.exception and not at.warning
+
+
+def test_diagnose_missing_notice(env, tmp_path, monkeypatch):
+    import shutil
+    out = tmp_path / "out"
+    shutil.copytree(env["out"] / "walkforward", out / "walkforward")
+    monkeypatch.setenv("AT_OUT_DIR", str(out))
+    at = _run("diagnose.py")
+    assert "진단 산출물이 없다" in _info(at) and "src.backtest.diagnose" in _info(at)
