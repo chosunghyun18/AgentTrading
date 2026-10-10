@@ -28,6 +28,8 @@ with common.card("agent-now"):
         if nxt:
             step, _ = sg.blocking_step(nxt)
             st.caption(f"다음 후보: {nxt.name} — 현재 단계 '{step}' ({nxt.notes.get(step, '대기')})")
+        else:
+            st.caption("다음 후보 없음 — 다음 가설 설계 대기(시도 이력표 기준)")
     else:
         st.markdown(f"<div class='agent-now'>{now.name} {sv.status_badge(now)}</div>", unsafe_allow_html=True)
         st.write(now.summary)

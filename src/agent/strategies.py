@@ -46,7 +46,7 @@ def _steps(**kw) -> dict[str, str]:
 
 REGISTRY: tuple[Strategy, ...] = (
     Strategy(
-        id="C1", name="C1 역추세 · 메이커 진입 · 저빈도", status="next",
+        id="C1", name="C1 역추세 · 메이커 진입 · 저빈도", status="rejected",
         summary="가격이 단기 평균에서 크게 벗어나면 반대로 들어가되, 지정가(메이커)로만 체결하고 거래 수를 v1 의 1/10 이하로 줄인다.",
         evidence="aoa 원본 체결(2018-03~2021-12) 진위 확인 후 재현한 지표 — 역추세 진입 76%(5분)·71%(1시간)·66%(4시간), "
                  "메이커 체결 67%. v1 실패 원인 1순위(비용·빈도) 분석.",
@@ -58,10 +58,11 @@ REGISTRY: tuple[Strategy, ...] = (
                 "레짐 필터(C3) 없음 — 실행 전 고정(2026-10-10)"),
         params=("창 길이 2 × 임계 2 × 청산 방식 3 × 손절 σ 배수 2 = 24 시퀀스",
                 "판정은 보수적 메이커 체결, 전부 테이커는 민감도(+24)"),
-        steps=_steps(design="done", evidence="done", impl="pending", wf="pending", oos="pending", paper="pending",
-                     live="pending"),
+        steps=_steps(design="done", evidence="done", impl="done", wf="fail", oos="na", paper="na", live="na"),
         notes={"설계": "2026-10-10 규칙·그리드 고정, 시도 이력표 시도 2", "근거 데이터 검증": "aoa 원본 진위 확인·행동 지표 재현",
-               "구현": "구현 태스크 대기 · DSR 은 군집 방식(사람 확정)", "OOS 1회": "프로젝트 전체 1회 — 사람 판단"},
+               "구현": "2026-10-10 생성기·군집 DSR·판정 CLI 구현(T-20261009-17·18·19)",
+               "워크포워드": "2026-10-10 게이트 미달 — 결과 research/phase3-c1-walkforward.md, 산출물 c1/walkforward/c1+funding.*",
+               "OOS 1회": "워크포워드 미달이라 해당 없음"},
         doc="design/phase3-c1-meanrev-maker.md", doc_status="done", n_trials="누적 804",
     ),
     Strategy(

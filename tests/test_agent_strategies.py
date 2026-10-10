@@ -73,4 +73,4 @@ def test_describe_v1():
 
 def test_blocking_step():
     c1 = next(s for s in sg.registry() if s.id == "C1")
-    assert sg.blocking_step(c1) == ("구현", "pending")
+    assert sg.blocking_step(c1) == ("워크포워드", "fail")  # 2026-10-10 시도 2 판정 fail

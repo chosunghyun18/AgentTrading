@@ -49,12 +49,12 @@ def test_strategy_page(env):
     assert md.count('class="kpi-card') == 4  # v1 워크포워드 결과
     assert "진입: " in md and ("(모멘텀)" in md or "(돌파)" in md)  # 선택 규칙 문장
     assert len(at.button) == 0  # 읽기 전용
-    assert any("다음 후보: C1" in c.value for c in at.caption)
+    assert any("다음 후보 없음" in c.value for c in at.caption)  # 2026-10-10 C1 시도 2 fail
 
 
 def test_pipeline_html_states():
     h = sv.pipeline_html(sg.REGISTRY)
     assert h.count("<tr") == len(sg.REGISTRY) + 1
-    assert "미달" in h and "완료" in h and "대기" in h
+    assert "미달" in h and "완료" in h
     assert "phase3-next" not in h  # 문서 경로가 아니라 사유만
     assert 'title="Sharpe·DSR 미달"' in h
