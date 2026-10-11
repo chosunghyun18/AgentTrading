@@ -161,6 +161,10 @@ python -m src.backtest.run --start 2020-03-01 --end 2020-04-01 --fee-profile byb
 - 키: `cp .env.example .env` 후 Bybit Demo/Live 키(출금 권한 끔). LIVE 는 `AT_LIVE_ENABLED=1` + LIVE 키 + 화면 확인.
 - 주문 경로(`TradingService.place_order`, 리스크 사전 검사 포함)는 에이전트용으로 남아 있고 화면에서는 부르지 않는다.
 - 상태·감사 로그 `data/agent/`, 한도 `config/risk.yaml` — git 제외. 설계: Obsidian `design/agent-strategy-page.md`, `design/trading-console.md`.
+- 실시간 경로(J1, `src/agent/live/`, 설계 Obsidian `design/jev-decision-layer.md`): 공개 체결 스트림 → 로컬 1분봉(`bars.py`),
+  개인 WS 상태 캐시(`state_cache.py`), REST keep-alive 주문 라우터(`router.py`), 단계별 지연 기록(`src/agent/latency.py`).
+  아직 런타임에 연결하지 않아 주문을 내지 않는다. 로컬 봉 실연결 대조: `.venv/bin/python -m src.agent.live.check_bars --minutes 35`
+  → `data/agent/live_bars_check.json`.
 
 ## 사용자 대시보드 — 읽기 전용 결과 화면
 

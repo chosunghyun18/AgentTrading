@@ -120,6 +120,11 @@ class Bybit:
     def open_orders(self, symbol: str) -> list[dict]:
         return self._request("GET", "/v5/order/realtime", {"category": CATEGORY, "symbol": symbol}, auth=True)["list"]
 
+    def order_by_link(self, symbol: str, order_link_id: str) -> list[dict]:
+        """orderLinkId 로 주문 1건 조회(열린 주문 + 최근 종료 주문). 접수 여부가 불명일 때 확인용."""
+        return self._request("GET", "/v5/order/realtime",
+                             {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id}, auth=True)["list"]
+
     def executions(self, symbol: str, limit: int = 50) -> list[dict]:
         return self._request("GET", "/v5/execution/list", {"category": CATEGORY, "symbol": symbol, "limit": limit},
                              auth=True)["list"]
