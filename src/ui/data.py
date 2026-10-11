@@ -408,8 +408,16 @@ def _frontmatter(text: str) -> dict:
     return fm if isinstance(fm, dict) else {}
 
 
-def vault_tasks(vault_dir: Path) -> pd.DataFrame:
-    """볼트 `task/autodev/*.md` frontmatter → `id`·`title`·`status`·`kind`·`phase`(제목의 "Phase N", 없으면 None)."""
+TASK_COLUMNS = ["id", "title", "status", "kind", "phase"]
+
+
+def vault_tasks(vault_dir: Path | None) -> pd.DataFrame:
+    """볼트 `task/autodev/*.md` frontmatter → `id`·`title`·`status`·`kind`·`phase`(제목의 "Phase N", 없으면 None).
+
+    `vault_dir` 가 None 이면(볼트 미연결 — `AT_VAULT_DIR` 미설정) 빈 표.
+    """
+    if vault_dir is None:
+        return pd.DataFrame(columns=TASK_COLUMNS)
     d = Path(vault_dir) / "task" / "autodev"
     rows = []
     for p in sorted(d.glob("*.md")) if d.is_dir() else []:
@@ -423,7 +431,7 @@ def vault_tasks(vault_dir: Path) -> pd.DataFrame:
         m = PHASE_RE.search(title)
         rows.append({"id": str(fm.get("id", "")), "title": title, "status": str(fm.get("status", "")),
                      "kind": str(fm.get("kind", "")), "phase": int(m.group(1)) if m else None})
-    return pd.DataFrame(rows, columns=["id", "title", "status", "kind", "phase"])
+    return pd.DataFrame(rows, columns=TASK_COLUMNS)
 
 
 def phase_progress(tasks: pd.DataFrame) -> pd.DataFrame:

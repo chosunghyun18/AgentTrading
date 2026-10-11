@@ -2,33 +2,35 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from src.backtest.export_equity import export_paths
+from src.shared import settings as cfg
 from src.ui import data as ud
 from src.ui import theme
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULTS = {
-    "AT_OUT_DIR": ROOT / "data" / "out" / "backtest",
-    "AT_DATA_DIR": ROOT / "data" / "raw" / "normalized" / "bitmex",
-    "AT_VAULT_DIR": Path.home() / "Documents" / "Obsidian Vault" / "Projects" / "work" / "AgentTrading",
-}
+ROOT = cfg.ROOT
 EXPORT_CMD = "python -m src.backtest.export_equity --report data/out/backtest/walkforward/{name}.json"
 
 
 def path(key: str) -> Path:
-    """환경변수(테스트·다른 위치용)가 있으면 그 경로, 없으면 기본 경로."""
-    v = os.environ.get(key)
-    return Path(v) if v else DEFAULTS[key]
+    """`AT_OUT_DIR`·`AT_DATA_DIR` 같은 경로 설정 — 환경변수 → `.env` → 기본값(`src/shared/settings.py`)."""
+    p = cfg.path(key)
+    if p is None:
+        raise KeyError(f"{key} 미설정")
+    return p
+
+
+def vault_dir() -> Path | None:
+    """볼트 프로젝트 폴더 — `AT_VAULT_DIR` 를 설정했을 때만(기본값 없음, 선택 기능)."""
+    return cfg.path("AT_VAULT_DIR")
 
 
 def symbol() -> str:
-    return os.environ.get("AT_SYMBOL", "XBTUSD")
+    return cfg.get("AT_SYMBOL")
 
 
 def _mtime(p: Path) -> float:
@@ -76,8 +78,8 @@ def _diagnose(p: str, mtime: float):
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def _vault_tasks(vault: str):
-    return ud.vault_tasks(Path(vault))
+def _vault_tasks(vault: str | None):
+    return ud.vault_tasks(Path(vault) if vault else None)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
@@ -121,7 +123,8 @@ def diagnose(rep: dict) -> pd.DataFrame | None:
 
 
 def vault_tasks() -> pd.DataFrame:
-    return _vault_tasks(str(path("AT_VAULT_DIR")))
+    d = vault_dir()
+    return _vault_tasks(str(d) if d else None)
 
 
 def coverage() -> dict:

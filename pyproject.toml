@@ -1,0 +1,39 @@
+# AgentTrading — 설치·잠금 정의. 설계: Obsidian Projects/work/AgentTrading/design/platform-architecture.md 3.1절.
+# 패키지로 빌드하지 않는다(`package = false`): 코드는 `src/` 네임스페이스 그대로 `python -m src...` 로 쓴다(개명은 W4).
+# 의존성 상한: pandas 3 은 판정 경로(바이트 불변) 테스트 37개를 깨뜨린다(2026-10-10 독립 검토 실측) → `<3` 고정.
+# requirements.txt 는 전환기 동안 같은 내용을 유지하고, 이후 `uv export` 로 생성한다.
+
+[project]
+name = "agenttrading"
+version = "0.1.0"
+description = "검증된 전략만 실행하는 에이전트 트레이딩 — 백테스트 게이트·관리 화면·Bybit 실행 경로"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    # 데이터 처리
+    "pandas>=2.2,<3",
+    "numpy>=1.26,<2.3",
+    # 저장
+    "pyarrow>=15,<26",
+    # 수집
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
+    # 설정
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    # 사용자 대시보드 (src/ui)
+    "streamlit>=1.40",
+    "plotly>=5.24",
+    # 에이전트 실시간 경로 (src/agent/live) — 17.x 는 Python ≥ 3.11
+    "websockets>=13,<17",
+]
+
+[project.optional-dependencies]
+# 관리 화면 OIDC 로그인(st.login) — AT_AUTH_REQUIRED=1 로 배포할 때만 필요
+auth = ["Authlib>=1.3.2"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = false

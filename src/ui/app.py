@@ -14,9 +14,12 @@ if str(ROOT) not in sys.path:  # `streamlit run src/ui/app.py` 는 스크립트 
 
 import streamlit as st  # noqa: E402
 
+from src.ui import auth  # noqa: E402
+
 PAGES = Path(__file__).resolve().parent / "views"  # `pages/` 는 Streamlit 이 자동 멀티페이지로 잡아 app.py 를 건너뛴다
 
 st.set_page_config(page_title="AgentTrading", page_icon=":material/monitoring:", layout="wide")
+auth.gate()  # 인증·bind 게이트 — 기본값(127.0.0.1·인증 없음)에서는 아무것도 하지 않는다. src/ui/auth.py
 nav = st.navigation({
     "에이전트": [
         st.Page(PAGES / "strategy.py", title="전략", icon=":material/psychology:", default=True),

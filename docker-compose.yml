@@ -1,0 +1,22 @@
+# AgentTrading — 관리 화면(ui) 컨테이너. 절차·환경변수 표: DEPLOY.md
+# 기본값은 안전한 쪽이다: host 의 127.0.0.1 에만 공개하고(AT_PUBLISH), 컨테이너 안은 0.0.0.0 bind 라 인증을 요구한다(AT_AUTH_REQUIRED=1).
+# 외부에 열려면 TLS 리버스 프록시 뒤에서 AT_PUBLISH=0.0.0.0 + OIDC(.streamlit/secrets.toml) + AT_AUTH_ALLOWED_EMAILS 를 설정한다.
+# 거래소 키는 ui 컨테이너에 주지 않는다(콘솔 화면은 "키 설정 후 표시"). 에이전트 런타임 서비스는 W2 에서 추가한다.
+services:
+  ui:
+    build: .
+    image: agenttrading-ui:local
+    ports:
+      - "${AT_PUBLISH:-127.0.0.1}:${AT_PORT:-8501}:8501"
+    environment:
+      AT_AUTH_REQUIRED: "${AT_AUTH_REQUIRED:-1}"
+      AT_AUTH_ALLOWED_EMAILS: "${AT_AUTH_ALLOWED_EMAILS:-}"
+      AT_AUTH_EXTERNAL: "${AT_AUTH_EXTERNAL:-0}"
+    volumes:
+      - data:/app/data                    # 산출물·에이전트 상태·한도(risk.yaml) — named volume(SQLite WAL 대비)
+      - ./.streamlit:/app/.streamlit:ro   # config.toml(테마) + secrets.toml([auth], 운영자가 만든 경우)
+    # env_file: .env                      # 거래소 키를 ui 에 주려면(권장 안 함) 주석 해제
+    restart: unless-stopped
+
+volumes:
+  data:

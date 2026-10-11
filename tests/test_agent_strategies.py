@@ -1,15 +1,12 @@
 """agent.strategies — 레지스트리 형식, 관문 순서 규칙, 볼트 설계 문서 상태 일치, v1 파라미터 문장화."""
 
-import os
-from pathlib import Path
-
 import pytest
 import yaml
 
 from src.agent import strategies as sg
+from src.shared import settings as cfg
 
-VAULT = Path(os.environ.get("AT_VAULT_DIR") or
-             Path.home() / "Documents" / "Obsidian Vault" / "Projects" / "work" / "AgentTrading")
+VAULT = cfg.path("AT_VAULT_DIR")  # 환경변수 또는 .env 의 AT_VAULT_DIR — 코드에 개인 경로 기본값을 두지 않는다
 
 
 def test_registry_shape():
@@ -50,7 +47,7 @@ def test_status_matches_evidence_rule():
             assert s.status in ("rejected", "on_hold", "discarded"), s.id
 
 
-@pytest.mark.skipif(not VAULT.is_dir(), reason="볼트 없음")
+@pytest.mark.skipif(VAULT is None or not VAULT.is_dir(), reason="AT_VAULT_DIR 미설정 또는 볼트 없음")
 def test_registry_matches_vault_docs():
     """볼트가 기준 — 설계 문서가 있고 frontmatter status 가 레지스트리와 같아야 한다."""
     for s in sg.registry():

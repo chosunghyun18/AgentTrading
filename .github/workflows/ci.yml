@@ -1,0 +1,33 @@
+# 공개 레포 CI — Python 3.12 + uv 잠금으로 전체 pytest, 비밀키 스캔(gitleaks). 설계: Obsidian design/platform-architecture.md 3.1절
+# 실데이터·볼트가 없는 환경이라 그에 의존하는 테스트는 skip 된다(판정 재현이 아니라 코드 회귀 검사).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: pytest (Python 3.12, uv.lock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.11.26"
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen --extra auth --group dev
+      - run: uv run --frozen pytest -q
+
+  secrets-scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
