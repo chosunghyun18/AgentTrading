@@ -1,5 +1,8 @@
 # 공개 레포 CI — Python 3.12 + uv 잠금으로 전체 pytest, 비밀키 스캔(gitleaks). 설계: Obsidian design/platform-architecture.md 3.1절
 # 실데이터·볼트가 없는 환경이라 그에 의존하는 테스트는 skip 된다(판정 재현이 아니라 코드 회귀 검사).
+# 판정 산출물 "바이트 골든" 테스트 4건은 레퍼런스 플랫폼(macOS arm64)에서 만든 해시다 — Linux x86(OpenBLAS)에서는
+# 부동소수점 마지막 자리가 달라 JSON·parquet 바이트가 바뀐다(2026-10-11 첫 CI 실측, .md 는 일치). 그래서 ubuntu 잡은 그
+# 4건을 제외하고, macos 잡이 전체(골든 포함)를 돌린다. 수치 동치는 나머지 1e-9·1e-12 테스트가 본다.
 name: ci
 
 on:
@@ -9,8 +12,20 @@ on:
 
 jobs:
   test:
-    name: pytest (Python 3.12, uv.lock)
-    runs-on: ubuntu-latest
+    name: pytest (${{ matrix.os }}, Python 3.12, uv.lock)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            pytest_args: >-
+              --deselect tests/test_analysis_c1.py::test_v1_costs_bytes_unchanged
+              --deselect tests/test_analysis_run.py::test_outputs_bytes_golden
+              --deselect tests/test_backtest_run_funding.py::test_off_outputs_byte_identical_to_pre_funding
+          - os: macos-latest
+            pytest_args: ""
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0  # 부유 태그 v10 은 없다(2026-10-11 확인) — 정확한 태그로 고정
@@ -19,11 +34,12 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: uv sync --frozen --extra auth --group dev
-      - run: uv run --frozen pytest -q
+      - run: uv run --frozen pytest -q ${{ matrix.pytest_args }}
 
   secrets-scan:
     name: gitleaks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
