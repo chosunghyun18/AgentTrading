@@ -2,8 +2,9 @@
 
     python -m src.ui.serve [--address A] [--port P]   # 기본 AT_BIND_ADDRESS(127.0.0.1)·AT_PORT(8501)
 
-loopback 이 아닌 주소에 인증 요구(`AT_AUTH_REQUIRED=1` + `AT_AUTH_ALLOWED_EMAILS`)도 외부 인증 선언
-(`AT_AUTH_EXTERNAL=1`)도 없으면 종료코드 2 — fail-closed. 로컬 실행 스크립트 `scripts/ui.sh`(127.0.0.1 고정)는 그대로다.
+loopback 이 아닌 주소에 인증 요구(`AT_AUTH_REQUIRED=1`)도 외부 인증 선언(`AT_AUTH_REQUIRED=0 AT_AUTH_EXTERNAL=1`)도 없으면
+종료코드 2 — fail-closed. 플래그 값이 이상해도(`enabled` 등) 종료코드 2. 허용 목록이 비어 있어도 기동은 하되 화면이
+설정 안내만 보인다. 로컬 실행 스크립트 `scripts/ui.sh`(127.0.0.1 고정)는 그대로다.
 """
 
 from __future__ import annotations
@@ -37,7 +38,11 @@ def main(argv: Sequence[str] | None = None, execv: Callable[[str, list[str]], ob
     a = build_parser().parse_args(argv)
     address = a.address or settings.get("AT_BIND_ADDRESS")
     port = a.port if a.port is not None else int(settings.get("AT_PORT"))
-    ok, why = settings.bind_allowed(address, settings.auth_policy())
+    try:
+        ok, why = settings.bind_allowed(address, settings.auth_policy())
+    except ValueError as e:
+        print(f"기동 거부 — 설정 오류: {e}", file=err)
+        return EXIT_REFUSED
     if not ok:
         print(f"기동 거부 — {why}", file=err)
         return EXIT_REFUSED

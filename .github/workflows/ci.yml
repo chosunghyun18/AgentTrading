@@ -10,6 +10,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: pytest (${{ matrix.os }}, Python 3.12, uv.lock)
@@ -19,10 +22,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04   # ubuntu-latest 는 2026-10-19 에 26.04 로 옮겨간다(러너 공지) — 고정
             pytest_args: >-
               --deselect tests/test_analysis_c1.py::test_v1_costs_bytes_unchanged
-              --deselect tests/test_analysis_run.py::test_outputs_bytes_golden
+              --deselect "tests/test_analysis_run.py::test_outputs_bytes_golden[False]"
               --deselect tests/test_backtest_run_funding.py::test_off_outputs_byte_identical_to_pre_funding
           - os: macos-latest
             pytest_args: ""
@@ -33,17 +36,17 @@ jobs:
           version: "0.11.26"
           enable-cache: true
       - run: uv python install 3.12
-      - run: uv sync --frozen --extra auth --group dev
-      - run: uv run --frozen pytest -q ${{ matrix.pytest_args }}
+      - run: uv sync --locked --extra auth --group dev   # --locked: pyproject 와 uv.lock 이 어긋나면 실패(드리프트 검출)
+      - run: uv run --locked pytest -q ${{ matrix.pytest_args }}
 
   secrets-scan:
     name: gitleaks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@v3   # 개인 계정 무료. 조직 레포로 옮기면 GITLEAKS_LICENSE 필요
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

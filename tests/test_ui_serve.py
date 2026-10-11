@@ -1,4 +1,4 @@
-"""ui.serve — 기동 런처: 외부 bind + 인증 없음 → 종료코드 2(exec 없음), 허용이면 streamlit exec 인자."""
+"""ui.serve — 기동 런처: 외부 bind + 인증 없음 → 종료코드 2(exec 없음), 플래그 오타 → 2, 허용이면 streamlit exec 인자."""
 
 import io
 
@@ -32,13 +32,19 @@ def test_default_execs_streamlit_on_loopback():
     assert args[1:4] == ["-m", "streamlit", "run"] and args[4] == str(serve.APP)
     assert args[args.index("--server.address") + 1] == "127.0.0.1"
     assert args[args.index("--server.port") + 1] == "8501"
-    assert "--server.headless" in args and args[args.index("--server.headless") + 1] == "true"
+    assert args[args.index("--server.headless") + 1] == "true"
     assert args[args.index("--browser.gatherUsageStats") + 1] == "false"
 
 
 def test_external_without_auth_refused():
     rc, calls, msg = _main(["--address", "0.0.0.0"])
     assert rc == serve.EXIT_REFUSED == 2 and calls == [] and "기동 거부" in msg
+
+
+def test_ambiguous_flag_refused(monkeypatch):
+    monkeypatch.setenv("AT_AUTH_EXTERNAL", "enabled")
+    rc, calls, msg = _main(["--address", "0.0.0.0"])
+    assert rc == 2 and calls == [] and "설정 오류" in msg
 
 
 def test_env_address_and_port_with_external_auth(monkeypatch):
@@ -52,14 +58,15 @@ def test_env_address_and_port_with_external_auth(monkeypatch):
     assert args[args.index("--server.port") + 1] == "8600"
 
 
-def test_auth_required_needs_allowlist(monkeypatch):
+def test_auth_required_without_allowlist_starts_with_notice(monkeypatch):
+    """컨테이너가 재시작 루프에 빠지지 않게 기동은 한다 — 화면이 설정 안내만 보인다(auth 테스트가 보증)."""
     monkeypatch.setenv("AT_BIND_ADDRESS", "0.0.0.0")
     monkeypatch.setenv("AT_AUTH_REQUIRED", "1")
     rc, calls, msg = _main([])
-    assert rc == 2 and calls == [] and "AT_AUTH_ALLOWED_EMAILS" in msg
+    assert rc == 0 and len(calls) == 1 and "아무도 통과" in msg
     monkeypatch.setenv("AT_AUTH_ALLOWED_EMAILS", "a@x.io")
-    rc, calls, _ = _main([])
-    assert rc == 0 and len(calls) == 1
+    rc, calls, msg = _main([])
+    assert rc == 0 and len(calls) == 1 and "1명" in msg
 
 
 def test_cli_overrides_env(monkeypatch):

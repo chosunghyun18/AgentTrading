@@ -1,6 +1,7 @@
 # AgentTrading — 관리 화면(ui) 컨테이너. 절차·환경변수 표: DEPLOY.md
-# 기본값은 안전한 쪽이다: host 의 127.0.0.1 에만 공개하고(AT_PUBLISH), 컨테이너 안은 0.0.0.0 bind 라 인증을 요구한다(AT_AUTH_REQUIRED=1).
-# 외부에 열려면 TLS 리버스 프록시 뒤에서 AT_PUBLISH=0.0.0.0 + OIDC(.streamlit/secrets.toml) + AT_AUTH_ALLOWED_EMAILS 를 설정한다.
+# 기본값은 안전한 쪽이다: host 의 127.0.0.1 에만 공개하고(AT_PUBLISH), 컨테이너 안은 0.0.0.0 bind 라 인증을 요구한다
+# (AT_AUTH_REQUIRED=1). OIDC(.streamlit/secrets.toml)·AT_AUTH_ALLOWED_EMAILS 를 채우기 전에는 화면이 "인증 설정이 필요하다"
+# 안내만 보이고 아무도 들어오지 못한다(컨테이너는 떠 있다). 혼자 SSH 터널로만 볼 생각이면 AT_AUTH_REQUIRED=0 AT_AUTH_EXTERNAL=1.
 # 거래소 키는 ui 컨테이너에 주지 않는다(콘솔 화면은 "키 설정 후 표시"). 에이전트 런타임 서비스는 W2 에서 추가한다.
 services:
   ui:
@@ -14,9 +15,9 @@ services:
       AT_AUTH_EXTERNAL: "${AT_AUTH_EXTERNAL:-0}"
     volumes:
       - data:/app/data                    # 산출물·에이전트 상태·한도(risk.yaml) — named volume(SQLite WAL 대비)
-      - ./.streamlit:/app/.streamlit:ro   # config.toml(테마) + secrets.toml([auth], 운영자가 만든 경우)
+      - ./.streamlit:/app/.streamlit:ro   # config.toml(테마) + secrets.toml([auth], 운영자가 만든 경우; uid 10001 이 읽을 수 있어야 한다)
     # env_file: .env                      # 거래소 키를 ui 에 주려면(권장 안 함) 주석 해제
-    restart: unless-stopped
+    restart: unless-stopped               # 인증 없는 외부 bind 같은 설정 오류는 종료코드 2 로 멈춘다 → docker compose logs ui 로 확인
 
 volumes:
   data:

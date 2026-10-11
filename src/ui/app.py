@@ -1,4 +1,4 @@
-"""AgentTrading 콘솔(127.0.0.1 전용). 실행: `scripts/ui.sh`.
+"""AgentTrading 콘솔. 실행: `scripts/ui.sh`(127.0.0.1) 또는 `python -m src.ui.serve`(배포 — DEPLOY.md, 외부 bind 는 인증 필수).
 
 - 에이전트: 전략(무엇으로 거래하나)·모니터·리스크 한도·킬스위치·계정·기록. 수동 주문 없음 — 설계 Obsidian
   `design/agent-strategy-page.md`, `design/trading-console.md`
@@ -36,5 +36,5 @@ nav = st.navigation({
         st.Page(PAGES / "diagnose.py", title="진단", icon=":material/troubleshoot:"),
     ],
 })
-st.sidebar.caption("127.0.0.1 전용 · 수동 주문 없음 · 에이전트는 관문을 모두 통과한 전략만 쓴다")
+st.sidebar.caption("기본 127.0.0.1 · 외부 공개는 로그인 + 허용 이메일(DEPLOY.md) · 수동 주문 없음 · 에이전트는 관문을 모두 통과한 전략만 쓴다")
 nav.run()
