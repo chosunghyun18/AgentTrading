@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0  # 부유 태그 v10 은 없다(2026-10-11 확인) — 정확한 태그로 고정
         with:
           version: "0.11.26"
           enable-cache: true
