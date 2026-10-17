@@ -14,6 +14,8 @@ class FakeClient:
     """`Bybit` 와 같은 메서드. 주문은 시장가면 즉시 포지션에 반영한다."""
 
     def __init__(self, price: float = 80_000.0, has_keys: bool = True):
+        self.uid = "fake-uid"
+        self.equity = 1000
         self.price = price
         self.has_keys = has_keys
         self.base_url = "https://fake"
@@ -46,12 +48,12 @@ class FakeClient:
 
     def wallet(self):
         self._call("wallet")
-        return {"totalEquity": "1000", "totalAvailableBalance": "900", "totalPerpUPL": "0",
+        return {"totalEquity": str(self.equity), "totalAvailableBalance": "900", "totalPerpUPL": "0",
                 "coin": [{"coin": "USDT", "walletBalance": "1000", "equity": "1000"}]}
 
     def api_key_info(self):
         self._call("api_key_info")
-        return {"readOnly": 0, "permissions": {"ContractTrade": ["Order", "Position"], "Wallet": []}, "ips": ["*"]}
+        return {"userID": self.uid, "readOnly": 0, "permissions": {"ContractTrade": ["Order", "Position"], "Wallet": []}, "ips": ["*"]}
 
     def positions(self, symbol):
         return [dict(self.pos)]
@@ -90,3 +92,18 @@ class FakeClient:
         self._call("cancel_order", order_id=order_id)
         self.orders = [o for o in self.orders if o["orderId"] != order_id]
         return {"orderId": order_id}
+
+    def all_positions(self):
+        self._call("all_positions")
+        return [dict(self.pos)]
+
+    def all_open_orders(self):
+        self._call("all_open_orders")
+        return list(self.orders)
+
+    def cancel_account_order(self, order):
+        return self.cancel_order(order['symbol'], order['orderId'])
+
+    def order_by_link(self, symbol, link):
+        self._call("order_by_link", link=link)
+        return [o for o in self.orders if o.get("orderLinkId") == link]

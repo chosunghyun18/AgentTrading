@@ -16,6 +16,7 @@ REQ = OrderRequest(side="Buy", qty=0.0129, order_type="Market", leverage=2, stop
 def svc(tmp_path):
     s = TradingService(FakeClient(), "demo", tmp_path / "agent", tmp_path / "risk.yaml", live_unlocked=lambda: False)
     s.save_limits(LIM)
+    s.initialize_drawdown(confirm=True)
     return s
 
 
@@ -120,6 +121,7 @@ def test_high_price_formatting(tmp_path):
     s = TradingService(c, "demo", tmp_path / "a", tmp_path / "r.yaml", live_unlocked=lambda: False)
     s.save_limits(RiskLimits(max_leverage=3, max_position_usdt=5_000, max_loss_per_trade_usdt=50,
                              max_daily_loss_usdt=100))
+    s.initialize_drawdown(confirm=True)
     s.place_order(OrderRequest("Buy", 0.01, "Limit", 2, stop_loss=122_456.7, price=123_000.3))
     p = c.calls[-1][1]
     assert p["price"] == "123000.3" and p["stopLoss"] == "122456.7"
@@ -130,6 +132,7 @@ def test_live_requires_confirm_flag(tmp_path):
     s.save_limits(LIM)
     with pytest.raises(RiskRejected, match="LIVE 주문 확인"):
         s.place_order(REQ)
+    s.initialize_drawdown(confirm=True)
     s.place_order(REQ, confirm_live=True)
     assert s.position() is not None
 

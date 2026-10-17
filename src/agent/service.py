@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
 from src.agent import risk, settings
-from src.agent.bybit import BASE_URLS, Bybit, BybitError
+from src.agent.drawdown import Drawdown
+from src.agent.bybit import BASE_URLS, Bybit, BybitError, definitive_order_rejection, require_order_ack
 from src.agent.risk import Context, OrderRequest, RiskLimits, Rules
 
 
@@ -49,6 +51,7 @@ class TradingService:
         self.state_dir, self.limits_path = Path(state_dir), Path(limits_path)
         self._live_unlocked = live_unlocked
         self._rules: Rules | None = None
+        self._drawdown = Drawdown(client, mode, self.state_dir)
 
     # 조회 ---------------------------------------------------------------------------------------------
     def rules(self) -> Rules:
@@ -128,15 +131,44 @@ class TradingService:
             params.update(takeProfit=risk.num_str(req.take_profit), tpTriggerBy="MarkPrice")
         if req.order_type == "Limit":
             params.update(price=risk.num_str(req.price), timeInForce="GTC")
-        try:
+        with self._drawdown_entry() as (data, state):
             self.client.set_leverage(self.symbol, req.leverage)
-            res = self.client.create_order(**params)
-        except BybitError as e:
-            risk.audit(self.state_dir, "order_error", mode=self.mode, params=params, code=e.code, msg=e.msg)
-            raise
-        except Exception as e:  # 타임아웃 등: 거래소가 받았는지 모른다
-            risk.audit(self.state_dir, "order_unknown", mode=self.mode, params=params, error=repr(e))
-            raise OrderUnknown(params["orderLinkId"], e) from e
+            # Leverage setup may take seconds. Observe again immediately before send.
+            state = self._drawdown.observe(data, self._drawdown.key(self._drawdown.identity))
+            if self._drawdown.status(data, state)['blocked']:
+                raise RiskRejected(['drawdown blocks entry'])
+            self._drawdown.pending(data, state, self.symbol, params["orderLinkId"])
+            try:
+                # The final full REST context is read inside the shared store lock,
+                # after pending persistence, immediately before transport.
+                ctx = self.context(req)
+                violations = risk.check_order(req, ctx)
+                if violations:
+                    risk.audit(self.state_dir, "order_rejected", mode=self.mode, violations=violations)
+                    raise RiskRejected(violations)
+                prev = risk.preview(req, ctx)
+                self._drawdown.observe(data, self._drawdown.key(self._drawdown.identity))
+                self._drawdown.require_send_ready(data, state, self.symbol, params["orderLinkId"])
+            except Exception as exc:
+                self._drawdown.pending(data, state, self.symbol, params["orderLinkId"], False)
+                if isinstance(exc, RiskRejected):
+                    raise
+                raise RiskRejected([self._drawdown.error_text(exc)]) from exc
+            try:
+                res = require_order_ack(self.client.create_order(**params), params)
+            except BybitError as e:
+                if definitive_order_rejection(e):
+                    self._drawdown.pending(data, state, self.symbol, params["orderLinkId"], False)
+                else:
+                    self._drawdown.uncertain(data, state)
+                risk.audit(self.state_dir, "order_error", mode=self.mode, params=params, code=e.code,
+                           error="bybit_rejection" if definitive_order_rejection(e) else "submission_unknown")
+                raise
+            except Exception as e:  # Never retry unknown submissions.
+                self._drawdown.uncertain(data, state)
+                risk.audit(self.state_dir, "order_unknown", mode=self.mode, params=params, error="transport_unknown")
+                raise OrderUnknown(params["orderLinkId"], e) from e
+            self._drawdown.pending(data, state, self.symbol, params["orderLinkId"], False)
         risk.audit(self.state_dir, "order_placed", mode=self.mode, params=params, result=res,
                    ref_price=ctx.ref_price, preview=prev)
         return res
@@ -152,7 +184,7 @@ class TradingService:
         try:
             res = self.client.create_order(**params)
         except BybitError as e:
-            risk.audit(self.state_dir, "close_error", mode=self.mode, params=params, code=e.code, msg=e.msg,
+            risk.audit(self.state_dir, "close_error", mode=self.mode, params=params, code=e.code, error="bybit_error",
                        reason=reason)
             raise
         risk.audit(self.state_dir, "position_closed", mode=self.mode, params=params, result=res, reason=reason)
@@ -194,7 +226,49 @@ class TradingService:
         risk.audit(self.state_dir, "kill_switch", mode=self.mode, reason=reason, errors=out["errors"])
         return out
 
+    def drawdown_status(self) -> dict:
+        return self._drawdown.local_status()
+
+    def poll_drawdown(self) -> dict:
+        return self._drawdown.poll()
+
+    def save_drawdown_limit(self, limit_fraction: float) -> None:
+        self._drawdown.set_limit(limit_fraction)
+
+    def reconcile_drawdown_order(self, order_link_id: str, confirm: bool = False) -> dict:
+        return self._drawdown.reconcile(order_link_id, confirm)
+
+    def initialize_drawdown(self, *, confirm: bool = False) -> dict:
+        return self._drawdown.enroll(confirm)
+
+    def reset_drawdown_baseline(self, *, confirm: bool = False, reason: str = '') -> dict:
+        return self._drawdown.enroll(confirm, rebase=True, reason=reason)
+
+    def resume_drawdown(self, *, confirm: bool = False) -> dict:
+        return self._drawdown.resume(confirm)
+
+    @contextmanager
+    def _drawdown_entry(self):
+        guard = self._drawdown.entry_guard()
+        try:
+            state = guard.__enter__()
+        except Exception as exc:
+            message = 'drawdown guard: ' + self._drawdown.error_text(exc)
+            risk.audit(self.state_dir, 'drawdown_entry_rejected', mode=self.mode, reason=message)
+            raise RiskRejected([message]) from exc
+        try:
+            yield state
+        finally:
+            guard.__exit__(None, None, None)
+
     def resume(self) -> None:
+        status = self.drawdown_status()
+        if status['enrolled']:
+            status = self.poll_drawdown()
+            if status['latched'] or status['stale'] or status['reason'] not in ('', 'manual HALT'):
+                raise RuntimeError('drawdown prevents resume; use confirmed resume_drawdown')
+        elif status['limit_fraction'] is None:
+            raise RuntimeError('invalid drawdown state')
         risk.clear_halt(self.state_dir)
         risk.audit(self.state_dir, "resumed", mode=self.mode)
 

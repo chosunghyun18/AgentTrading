@@ -209,3 +209,71 @@ uv run pytest
 - 한 사람의 거래 기록은 표본이 작고 생존 편향이 있다. 백테스트는 전략 복제가 아니라
   **가설 검증** 용도로 쓴다.
 - 레버리지 선물은 파산 리스크가 실재한다. 실거래 전환은 별도 판단을 거친다.
+
+## 계정 낙폭 보호 (MDD)
+
+콘솔 **리스크 → 계정 낙폭 보호**에서 한도를 정한다. 기본 30%, 개인 한도 80%는 `0.80`으로 저장한다.
+입력 범위는 **0% 초과 100% 미만**이다. 기존 네 가지 주문 한도와 백테스트 MDD·합격 판정 기준은 그대로다.
+계정 낙폭은 **미실현 손익을 포함한 계정 전체 USD equity**의 설치 후 **관측 최고점** 대비 손실이다.
+설치 전 최고점이나 관측 사이의 가격 경로를 복원하지 않는다. 예: 최고 equity 100 → 20이면 낙폭 80%이며
+한도 80%에 정확히 도달해도 신규 진입을 차단한다.
+
+API 키 없이도 원하는 한도를 저장할 수 있다. 계정 등록은 실제 계정 UID와 유효한 잔고 조회가 필요하며,
+계정 전체 포지션·신규 미체결·접수 불명 주문이 없어야 한다. 첫 기준 등록은 화면에서 명시적으로 확인한다.
+상태는 거래소/환경·실제 UID·계정 유형별로 분리하며 API 키 교체로 최고점을 초기화하지 않는다.
+**전용 계정·입출금 없음**을 전제로 한다. 입출금이 있으면 운용을 멈추고 flat 계정에서 사유와 확인을 거쳐
+기준금을 재설정한다. 이전 epoch·최대 낙폭·breach 이력은 남는다. **재설정은 재개가 아니다**.
+최신 equity와 현재 낙폭이 한도 미만인지 확인한 뒤 별도로 **낙폭 보호 재개**를 눌러야 한다.
+한도 상향으로 latch가 해제되지 않으며 수동 HALT도 별도로 유지된다.
+
+**한도 저장만으로 감시가 켜지지 않는다.** 화면은 수동 관측이며 지속 감시는 별도 `watch` 프로세스가 필요하다.
+프로세스가 꺼져 있는 동안 보호를 보장하지 않는다. 마지막 관측 시각·관측 공백·stale·차단 사유·취소 실패는
+리스크 화면에서 확인한다. 신규 주문은 전송 직전에도 최신 equity를 검사한다. 관측 30초 초과, 조회 지연
+10초 초과, UID/잔고/상태 저장 오류는 신규 진입을 차단한다.
+
+```bash
+python -m src.agent.drawdown_cli --mode demo status       # 로컬 상태만, 거래소 요청 없음
+python -m src.agent.drawdown_cli --mode demo set-limit --percent 80
+# 다음 명령은 설정된 계정에 조회 요청을 보낸다. 여기서는 사용자가 직접 판단해 실행한다.
+python -m src.agent.drawdown_cli --mode demo initialize --confirm
+python -m src.agent.drawdown_cli --mode demo watch --interval 5
+# 운용 중단·계정 전체 flat 확인 후 현금흐름 조정
+python -m src.agent.drawdown_cli --mode demo reset-baseline --confirm --reason "입출금 조정"
+python -m src.agent.drawdown_cli --mode demo resume --confirm
+```
+
+한도 도달 시 계정별 차단을 먼저 저장하고 `atc-`/`atg-` 에이전트 신규 진입 주문만 취소한다.
+reduce-only·close-on-trigger 보호 주문은 보존한다. 취소 실패·접수 불명은 차단 상태에서 직접 확인한다.
+**자동 시장가 청산은 하지 않는다.** 기존 수동 킬스위치의 명시적 취소·청산과 비상 reduce-only 경로는 별도다.
+
+접수 불명 주문은 `status`의 `pending_orders`에서 심볼·`orderLinkId`를 확인한다. 아래 명령은
+저장된 계정 UID와 해당 주문의 심볼을 사용해 realtime/history를 조회한다. 일치하는 심볼과 링크의
+주문 기록이 있을 때만 `--confirm`으로 해당 pending 항목을 정리한다. 빈 조회·조회 오류는 미접수 증거가
+아니며 계속 차단한다. JSON 직접 수정이나 미접수 추정으로 차단을 해제하지 않는다.
+
+```bash
+python -m src.agent.drawdown_cli --mode demo reconcile --order-link-id atc-RECORDED_LINK
+python -m src.agent.drawdown_cli --mode demo reconcile --order-link-id atc-RECORDED_LINK --confirm
+# reconciliation은 latch를 유지한다. 현재 DD가 한도 미만이고 미해결 주문·취소 오류가 없을 때 별도 재개
+python -m src.agent.drawdown_cli --mode demo resume --confirm
+```
+
+reconciliation과 일반 재개는 peak·epoch·history를 초기화하지 않는다. 현금흐름 조정이 없으면
+불필요한 baseline reset을 하지 않는다. 확인 가능한 기록이 없으면 보호를 유지한 채 거래소에서 조사한다.
+
+로컬 검증은 실제 거래소 자격증명이나 외부 거래소 요청을 사용하지 않는다.
+
+```bash
+.venv312/bin/python -m pytest tests/test_ui_drawdown.py tests/test_ui_trading_pages.py -q
+scripts/check_mdd_install.sh
+# Chrome/Chromium + Node 22 이상(native WebSocket)이 필수. 미설치 시 실패하며 건너뛰지 않는다.
+MDD_NODE=/path/to/node22 CHROME=/path/to/chrome .venv312/bin/python scripts/check_mdd_browser.py
+```
+
+설치 검증은 `uv`와 잠금 파일을 사용해 `mktemp` 환경에 `uv sync --frozen --python 3.12 --group dev --extra auth`를 실행하고
+CLI/UI 도움말·import 및 실제 UI 서버의 로컬 HTTP 기동·응답을 검사한 뒤 서버와 환경을 정리한다.
+브라우저 검증은 실제 headless Chrome의 DOM 입력·클릭으로
+가짜 계정 80% 저장 → 등록 → 정확한 80% 손실 차단 → 재개 거부 → 기준금 재설정 → 별도 재개를 확인한다.
+저장된 정책·이전 낙폭 이력·감사 기록·보호 주문 유지와 신규 주문 전송 없음도 확인한다.
+임시 Streamlit 서버·가짜 계정 상태·Chrome 프로필은 종료 시 정리한다. `MDD_NODE`/`CHROME`은 실행 파일 경로이며,
+생략 시 PATH의 Node와 Chrome/Chromium(또는 macOS 기본 Chrome 경로)을 사용한다.

@@ -18,11 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.agent import risk
-from src.agent.bybit import Bybit, BybitError
+from src.agent.bybit import Bybit, BybitError, definitive_order_rejection, require_order_ack
 from src.agent.latency import Trace
 from src.agent.live.state_cache import StateCache
 from src.agent.risk import OrderRequest, RiskLimits, Rules
-from src.agent.service import OrderUnknown, RiskRejected
+from src.agent.service import OrderUnknown, RiskRejected, TradingService
 
 AGENT_LEVERAGE = 4.0             # C1 R3 노출 상한
 KINDS = ("market", "ioc", "postonly")
@@ -74,6 +74,7 @@ class OrderRouter:
         self.leverage = leverage
         self.rules: Rules | None = None
         self._sent = self._load_sent()
+        self._service = TradingService(client, mode, state_dir, limits_path, symbol, live_unlocked)
 
     # 기동 ---------------------------------------------------------------------------------------
     def _links_path(self) -> Path:
@@ -121,30 +122,55 @@ class OrderRouter:
             risk.audit(self.state_dir, "live_order_rejected", mode=self.mode, key=key, params=params,
                        violations=violations)
             raise RiskRejected(violations)
-        self._remember(link)
-        if trace:
-            trace.mark("t5")
-        try:
-            res = self.client.create_order(**params)
-        except BybitError as err:
-            if err.code == DUPLICATE_LINK:
-                risk.audit(self.state_dir, "live_order_duplicate", mode=self.mode, params=params)
-                return {"orderLinkId": link, "duplicate": True}
-            risk.audit(self.state_dir, "live_order_error", mode=self.mode, params=params, code=err.code, msg=err.msg)
-            raise
-        except Exception as err:  # 타임아웃 등 — 접수 여부 불명. 재시도하지 않는다
-            risk.audit(self.state_dir, "live_order_unknown", mode=self.mode, params=params, error=repr(err))
-            raise OrderUnknown(link, err) from err
-        finally:
+        with self._service._drawdown_entry() as (data, state):
+            self._service._drawdown.pending(data, state, self.symbol, link)
             if trace:
-                trace.mark("t5r")
+                trace.mark("t5")
+            try:
+                # REST refresh supplements, and never relaxes, cache safety blockers.
+                ctx = self._service.context(req)
+                violations = self.cache.blockers() + risk.check_order(req, ctx)
+                if violations:
+                    risk.audit(self.state_dir, "live_order_rejected", mode=self.mode, params=params,
+                               violations=violations)
+                    raise RiskRejected(violations)
+                self._service._drawdown.observe(data, self._service._drawdown.key(self._service._drawdown.identity))
+                if self.cache.blockers():
+                    raise RiskRejected(self.cache.blockers())
+                self._remember(link)
+                self._service._drawdown.require_send_ready(data, state, self.symbol, link)
+            except Exception as err:
+                self._service._drawdown.pending(data, state, self.symbol, link, False)
+                if isinstance(err, RiskRejected):
+                    raise
+                raise RiskRejected([self._service._drawdown.error_text(err)]) from err
+            try:
+                res = require_order_ack(self.client.create_order(**params), params)
+                self._service._drawdown.pending(data, state, self.symbol, link, False)
+            except BybitError as err:
+                if definitive_order_rejection(err):
+                    self._service._drawdown.pending(data, state, self.symbol, link, False)
+                else:
+                    self._service._drawdown.uncertain(data, state)
+                if err.code == DUPLICATE_LINK:
+                    risk.audit(self.state_dir, "live_order_duplicate", mode=self.mode, params=params)
+                    return {"orderLinkId": link, "duplicate": True}
+                risk.audit(self.state_dir, "live_order_error", mode=self.mode, params=params, code=err.code, error="bybit_error")
+                raise
+            except Exception as err:  # 타임아웃 등 — 접수 여부 불명. 재시도하지 않는다
+                self._service._drawdown.uncertain(data, state)
+                risk.audit(self.state_dir, "live_order_unknown", mode=self.mode, params=params, error="transport_unknown")
+                raise OrderUnknown(link, err) from err
+            finally:
+                if trace:
+                    trace.mark("t5r")
         risk.audit(self.state_dir, "live_order_placed", mode=self.mode, key=key, params=params, result=res)
         return res
 
     def resolve(self, link: str) -> dict | None:
-        """접수 불명 주문을 orderLinkId 로 조회. 없으면 None(거래소가 받지 않음)."""
+        """접수 불명 주문을 orderLinkId 로 조회. 없으면 None(접수 여부는 여전히 불명)."""
         rows = self.client.order_by_link(self.symbol, link)
-        found = rows[0] if rows else None
+        found = next((o for o in rows if o.get("symbol") == self.symbol and o.get("orderLinkId") == link), None)
         risk.audit(self.state_dir, "live_order_resolved", link=link,
                    status=(found or {}).get("orderStatus", "not_found"))
         return found

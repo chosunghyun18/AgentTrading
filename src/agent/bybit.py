@@ -26,12 +26,29 @@ TIMEOUT = 10
 LEVERAGE_NOT_MODIFIED = 110043  # set-leverage: 이미 같은 값
 TIMESTAMP_INVALID = 10002      # 요청 시각이 서버 시각과 recv_window 이상 어긋남
 MAX_PAGES = 20
+# Only documented pre-acceptance validation/auth/balance rejections are definitive.
+# Duplicate IDs, timeouts, rate limits and server failures remain uncertain.
+DEFINITIVE_ORDER_REJECTIONS = frozenset({10001, 10003, 10004, 10005, 10010, 110004, 110007, 110012})
+
+
+def definitive_order_rejection(error: BybitError) -> bool:
+    return error.code in DEFINITIVE_ORDER_REJECTIONS
 
 
 class BybitError(RuntimeError):
     def __init__(self, code: int, msg: str, path: str):
         self.code, self.msg, self.path = code, msg, path
         super().__init__(f"Bybit {path} retCode={code}: {msg}")
+
+
+def require_order_ack(result: dict, params: Mapping) -> dict:
+    """Only a positive ID and matching submitted link establish acknowledgement."""
+    if (not isinstance(result, dict) or not isinstance(result.get('orderId'), str)
+            or not result['orderId'].strip()
+            or (params.get('orderLinkId') is not None
+                and result.get('orderLinkId') != params['orderLinkId'])):
+        raise BybitError(-3, 'invalid order acknowledgement; acceptance unknown', '/v5/order/create')
+    return result
 
 
 class Bybit:
@@ -84,13 +101,21 @@ class Bybit:
             headers.update({"X-BAPI-API-KEY": self._key, "X-BAPI-TIMESTAMP": ts, "X-BAPI-RECV-WINDOW": self._recv,
                             "X-BAPI-SIGN": self.sign(ts, payload)})
         resp = self._session.request(method, url, headers=headers, data=body, timeout=TIMEOUT)
+        if getattr(resp, "status_code", 200) >= 500:
+            raise BybitError(-2, "HTTP server response; acceptance unknown", path)
         try:
             data = resp.json()
         except ValueError:
             raise BybitError(-2, f"HTTP {getattr(resp, 'status_code', '?')} 비JSON 응답", path) from None
-        if data.get("retCode") != 0:
-            raise BybitError(int(data.get("retCode", -3)), str(data.get("retMsg", "")), path)
-        return data.get("result") or {}
+        if (not isinstance(data, dict) or not isinstance(data.get("retCode"), int)
+                or isinstance(data.get("retCode"), bool)):
+            raise BybitError(-3, "malformed response; acceptance unknown", path)
+        if data["retCode"] != 0:
+            raise BybitError(data["retCode"], str(data.get("retMsg", "")), path)
+        result = data.get("result")
+        if result is not None and not isinstance(result, dict):
+            raise BybitError(-3, "malformed result; acceptance unknown", path)
+        return result or {}
 
     # 공개 시세 ----------------------------------------------------------------------------------------
     def server_time(self) -> dict:
@@ -120,10 +145,60 @@ class Bybit:
     def open_orders(self, symbol: str) -> list[dict]:
         return self._request("GET", "/v5/order/realtime", {"category": CATEGORY, "symbol": symbol}, auth=True)["list"]
 
+    def _account_pages(self, path: str, **params) -> list[dict]:
+        rows, cursor = [], None
+        for _ in range(MAX_PAGES):
+            result = self._request("GET", path, {**params, "limit": 50, "cursor": cursor}, auth=True)
+            page = result.get("list")
+            if not isinstance(page, list):
+                raise RuntimeError("incomplete account query")
+            rows.extend({**row, "_category": params["category"]} for row in page)
+            cursor = result.get("nextPageCursor")
+            if not cursor:
+                return rows
+        raise RuntimeError("account pagination exhausted; protection fails closed")
+
+    def all_positions(self) -> list[dict]:
+        """UNIFIED account-wide derivatives, fully paginated (v5 position/list)."""
+        rows = []
+        for params in ({"category": "linear", "settleCoin": "USDT"},
+                       {"category": "linear", "settleCoin": "USDC"},
+                       {"category": "inverse"}, {"category": "option"}):
+            rows.extend(self._account_pages("/v5/position/list", **params))
+        return rows
+
+    def all_open_orders(self) -> list[dict]:
+        """All UNIFIED product categories, including conditional/protective orders."""
+        rows = []
+        for params in ({"category": "linear", "settleCoin": "USDT"},
+                       {"category": "linear", "settleCoin": "USDC"},
+                       {"category": "inverse"}, {"category": "option"}, {"category": "spot"}):
+            rows.extend(self._account_pages("/v5/order/realtime", **params, openOnly=0))
+        return rows
+
+    def cancel_account_order(self, order: dict) -> dict:
+        return self._request("POST", "/v5/order/cancel",
+                             {"category": order["_category"], "symbol": order["symbol"],
+                              "orderId": order["orderId"]}, auth=True)
+
     def order_by_link(self, symbol: str, order_link_id: str) -> list[dict]:
         """orderLinkId 로 주문 1건 조회(열린 주문 + 최근 종료 주문). 접수 여부가 불명일 때 확인용."""
-        return self._request("GET", "/v5/order/realtime",
-                             {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id}, auth=True)["list"]
+        params = {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id}
+        rows, query_failed = [], False
+        for path in ("/v5/order/realtime", "/v5/order/history"):
+            try:
+                result = self._request("GET", path, params, auth=True)
+                page = result.get("list")
+                if not isinstance(page, list) or any(not isinstance(o, dict) for o in page):
+                    raise BybitError(-3, "malformed order query", path)
+                rows.extend(page)
+                if any(o.get("symbol") == symbol and o.get("orderLinkId") == order_link_id for o in page):
+                    return rows
+            except Exception:
+                query_failed = True
+        if query_failed:
+            raise BybitError(-3, "order evidence query incomplete", "/v5/order/history")
+        return rows
 
     def executions(self, symbol: str, limit: int = 50) -> list[dict]:
         return self._request("GET", "/v5/execution/list", {"category": CATEGORY, "symbol": symbol, "limit": limit},
@@ -156,7 +231,8 @@ class Bybit:
                 raise
 
     def create_order(self, **params) -> dict:
-        return self._request("POST", "/v5/order/create", {"category": CATEGORY, **params}, auth=True)
+        result = self._request("POST", "/v5/order/create", {"category": CATEGORY, **params}, auth=True)
+        return require_order_ack(result, params)
 
     def cancel_all(self, symbol: str) -> dict:
         return self._request("POST", "/v5/order/cancel-all", {"category": CATEGORY, "symbol": symbol}, auth=True)

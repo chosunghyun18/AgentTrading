@@ -219,6 +219,7 @@ def router(tmp_path):
     r = OrderRouter(Client(), c, mode="demo", state_dir=tmp_path / "agent", limits_path=tmp_path / "risk.yaml",
                     symbol="BTCUSDT", live_unlocked=lambda: False)
     r.start()
+    r._service.initialize_drawdown(confirm=True)
     return r
 
 
