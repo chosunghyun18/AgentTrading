@@ -193,10 +193,13 @@ scripts/ui.sh                                 # PORT=8502 scripts/ui.sh 로 포�
 ## 개발
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest
+uv sync --group dev --extra auth   # Python 3.12 + uv.lock 으로 .venv 생성 (권장)
+uv run pytest
 ```
+
+- `requirements.txt` 는 `uv export` 로 만든 잠금 사본(버전·해시 고정)이라 `pip install -r requirements.txt` 도 같은 버전을 설치한다. 손으로 고치지 않는다(`uv lock` 뒤 `uv export --group dev --extra auth -o requirements.txt`).
+- 이미 다른 Python 의 `.venv` 를 쓰고 있으면 `UV_PROJECT_ENVIRONMENT=.venv312 uv sync --group dev --extra auth` 로 병행 venv 를 만든다.
+- 배포(Docker · 로그인 게이트 · 환경변수 표)는 [DEPLOY.md](DEPLOY.md). 설계: Obsidian `design/platform-architecture.md`.
 
 ## 전제 / 리스크
 
