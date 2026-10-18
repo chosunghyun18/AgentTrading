@@ -1,4 +1,4 @@
-"""ui.theme 디자인 토큰 = 레퍼런스(vue-element-admin) 값, config.toml 테마·서버 설정, ui.sh 로컬 고정."""
+"""ui.theme 디자인 토큰 v2 = 벤치마크 값(Obsidian design/ui-ux-v2-benchmark.md), config.toml 테마·서버 설정, ui.sh 로컬 고정."""
 
 import toml
 from pathlib import Path
@@ -9,29 +9,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_tokens_match_reference():
-    assert (theme.SIDEBAR_WIDTH, theme.SIDEBAR_BG, theme.SIDEBAR_TEXT, theme.SIDEBAR_ACTIVE, theme.SIDEBAR_HOVER) == \
-        (210, "#304156", "#bfcbd9", "#409EFF", "#263445")
-    assert (theme.MAIN_BG, theme.MAIN_PADDING) == ("#f0f2f5", 32)
-    assert (theme.CARD_SHADOW, theme.CARD_PADDING, theme.CARD_GAP) == ("4px 4px 40px rgba(0,0,0,.05)", 16, 32)
-    assert (theme.KPI_HEIGHT, theme.KPI_ICON_SIZE) == (108, 48)
-    assert theme.KPI_COLORS == ("#40c9c6", "#36a3f7", "#f4516c", "#34bfa3")
-    assert (theme.PRIMARY, theme.SUCCESS, theme.WARNING, theme.DANGER, theme.INFO) == \
-        ("#409EFF", "#67C23A", "#E6A23C", "#F56C6C", "#909399")
-    assert theme.verdict_color("pass") == theme.SUCCESS and theme.verdict_color("fail") == theme.DANGER
+    # 중립: Tailwind zinc 950/900/800/100/400/500
+    assert (theme.MAIN_BG, theme.SURFACE, theme.BORDER) == ("#09090b", "#18181b", "#27272a")
+    assert (theme.TEXT, theme.TEXT_SECONDARY, theme.INFO) == ("#f4f4f5", "#a1a1aa", "#71717a")
+    # 손익: FreqUI --color-profit / --color-loss · 경고(LIVE) amber-500 · 기본 blue-500
+    assert (theme.PROFIT, theme.LOSS, theme.WARNING, theme.PRIMARY) == ("#12bb7b", "#ef5350", "#f59e0b", "#3b82f6")
+    assert theme.SUCCESS == theme.PROFIT and theme.DANGER == theme.LOSS
+    assert theme.MODE_COLORS == {"demo": theme.PRIMARY, "live": theme.LOSS}  # LIVE 만 요란(빨강), HALT 는 amber
+    assert theme.KPI_COLORS == ("#38bdf8", "#a78bfa", "#f472b6", "#2dd4bf")
+    assert (theme.SIDEBAR_WIDTH, theme.SIDEBAR_BG, theme.CARD_BG) == (230, theme.SURFACE, theme.SURFACE)
+    assert theme.verdict_color("pass") == theme.PROFIT and theme.verdict_color("fail") == theme.LOSS
     assert theme.verdict_color(None) == theme.INFO
 
 
 def test_css_uses_tokens():
-    for v in (theme.SIDEBAR_BG, theme.SIDEBAR_HOVER, theme.SIDEBAR_ACTIVE, theme.MAIN_BG, theme.CARD_SHADOW,
-              f"{theme.KPI_HEIGHT}px", f"{theme.SIDEBAR_WIDTH}px"):
+    for v in (theme.SURFACE, theme.BORDER, theme.PROFIT, theme.LOSS, f"{theme.KPI_HEIGHT}px", f"{theme.SIDEBAR_WIDTH}px",
+              "st-key-kill-btn", "st-key-to-live", "tabular-nums"):
         assert v in theme.CSS
 
 
 def test_config_toml_matches_tokens():
     cfg = toml.loads((ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
     t, sb = cfg["theme"], cfg["theme"]["sidebar"]
-    assert t["base"] == "light"
-    assert (t["primaryColor"], t["backgroundColor"]) == (theme.PRIMARY, theme.MAIN_BG)
+    assert t["base"] == "dark"
+    assert (t["primaryColor"], t["backgroundColor"], t["secondaryBackgroundColor"], t["textColor"]) == \
+        (theme.PRIMARY, theme.MAIN_BG, theme.SURFACE, theme.TEXT)
+    assert (t["borderColor"], t["redColor"], t["greenColor"], t["orangeColor"], t["grayColor"]) == \
+        (theme.BORDER, theme.LOSS, theme.PROFIT, theme.WARNING, theme.INFO)
+    assert list(t["chartCategoricalColors"]) == list(theme.KPI_COLORS)
     assert (sb["backgroundColor"], sb["textColor"], sb["primaryColor"]) == \
         (theme.SIDEBAR_BG, theme.SIDEBAR_TEXT, theme.SIDEBAR_ACTIVE)
     assert cfg["server"]["address"] == "127.0.0.1" and cfg["server"]["headless"] is True
@@ -46,7 +51,9 @@ def test_ui_sh_local_only():
 
 def test_kpi_card_escapes_and_marks_failure():
     h = theme.kpi_card_html("<b>", "1", "기준", False, "sharpe", theme.KPI_COLORS[0])
-    assert "&lt;b&gt;" in h and "kpi-bad" in h
+    assert "&lt;b&gt;" in h and "kpi-bad" in h and "미달" in h
+    ok = theme.kpi_card_html("x", "1", "기준", True, "sharpe", theme.KPI_COLORS[0])
+    assert "kpi-ok" in ok and "통과" in ok and "kpi-bad" not in ok
 
 
 def test_no_auto_multipage_dir():

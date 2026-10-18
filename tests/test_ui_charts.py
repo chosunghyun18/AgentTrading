@@ -18,9 +18,24 @@ def test_equity_fig():
     eq = pd.DataFrame({"date": list(d) * 2, "profile": ["default"] * 3 + ["bybit"] * 3,
                        "equity": [1.0, 1.1, 1.2, 1.0, 1.05, 1.1], "daily_ret": 0.0})
     f = charts.equity_fig(eq)
-    assert [t.name for t in f.data] == ["default", "bybit"]
+    assert [t.name for t in f.data][:2] == ["default", "bybit"]  # 자본 선 먼저
     assert list(f.data[0].y) == [1.0, 1.1, 1.2]
     assert f.data[0].line.color == theme.LINE_COLORS["default"]
+    dd = f.data[2:]  # 낙폭 — 두 번째 행, 범례 숨김, ≤ 0
+    assert [t.yaxis for t in dd] == ["y2", "y2"] and all(t.showlegend is False for t in dd)
+    assert max(max(t.y) for t in dd) <= 0
+    assert len(f.layout.xaxis.rangeselector.buttons) == 5  # 1m·3m·6m·1y·all
+    assert {s.y0 for s in f.layout.shapes} == {1.0}  # 기준선만(낙폭 0 이면 최대 낙폭 선 없음)
+    assert f.layout.xaxis.gridcolor == theme.BORDER and f.layout.yaxis2.tickformat == ".0%"  # 축 토큰이 병합에서 살아남음
+
+
+def test_equity_fig_marks_max_drawdown():
+    d = pd.date_range(T("2020-01-01"), periods=3, freq="D")
+    eq = pd.DataFrame({"date": d, "profile": "default", "equity": [1.0, 0.8, 0.9], "daily_ret": 0.0})
+    f = charts.equity_fig(eq)
+    assert list(f.data[1].y) == [0.0, -0.19999999999999996, -0.09999999999999998]
+    assert any(abs(s.y0 - (-0.2)) < 1e-9 for s in f.layout.shapes) and "최대 낙폭" in f.layout.annotations[0].text
+    assert list(charts.drawdown(pd.Series([1.0, 2.0, 1.0]))) == [0.0, 0.0, -0.5]
 
 
 def test_fold_and_train_test_figs():

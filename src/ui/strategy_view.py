@@ -7,12 +7,12 @@ import html
 from src.agent.strategies import STATUSES, STEPS, Strategy
 from src.ui import theme
 
-STATE_STYLE = {  # 상태 → (표시, 배경, 글자)
-    "done": ("완료", theme.SUCCESS, "#fff"),
-    "fail": ("미달", theme.DANGER, "#fff"),
+STATE_STYLE = {  # 상태 → (표시, 배경, 글자) — 다크 토큰 v2
+    "done": ("완료", theme.PROFIT, "#fff"),
+    "fail": ("미달", theme.LOSS, "#fff"),
     "running": ("진행 중", theme.PRIMARY, "#fff"),
-    "pending": ("대기", "#ecf5ff", theme.PRIMARY),
-    "na": ("—", "#f4f4f5", theme.INFO),
+    "pending": ("대기", theme.BORDER, theme.TEXT),
+    "na": ("—", theme.MAIN_BG, theme.INFO),
 }
 STATUS_COLORS = {"success": theme.SUCCESS, "primary": theme.PRIMARY, "danger": theme.DANGER,
                  "warning": theme.WARNING, "info": theme.INFO}

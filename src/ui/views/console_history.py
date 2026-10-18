@@ -1,10 +1,10 @@
-"""거래 기록 — 체결 내역, 실현 손익, 콘솔 감사 로그."""
+"""거래 기록 — 체결 내역, 실현 손익(손익 색·부호), 콘솔 감사 로그."""
 
 import pandas as pd
 import streamlit as st
 
 from src.agent import risk
-from src.ui import common, trading
+from src.ui import common, theme, trading
 
 common.setup("거래 기록")
 svc = trading.service()
@@ -32,9 +32,11 @@ if not trading.need_keys(svc):
             cp = pd.DataFrame(svc.client.closed_pnl(svc.symbol, None, 50))
             if len(cp):
                 cols = ["updatedTime", "side", "qty", "avgEntryPrice", "avgExitPrice", "closedPnl"]
-                st.metric("합계(최근 50건)", f"{pd.to_numeric(cp['closedPnl']).sum():,.2f} USDT")
-                st.dataframe(_ms(cp, "updatedTime")[[c for c in cols if c in cp.columns]], hide_index=True,
-                             width="stretch")
+                cp["closedPnl"] = pd.to_numeric(cp["closedPnl"], errors="coerce")
+                total = float(cp["closedPnl"].sum())
+                st.markdown(f"합계(최근 {len(cp)}건) {theme.pnl_html(total, '{:+,.2f} USDT')}", unsafe_allow_html=True)
+                view = _ms(cp, "updatedTime")[[c for c in cols if c in cp.columns]]
+                st.dataframe(common.pnl_styler(view, ["closedPnl"]), hide_index=True, width="stretch")
             else:
                 st.caption("없음")
 

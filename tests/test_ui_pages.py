@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from src.agent import service, settings
+from src.agent.service import TradingService
 from tests import ui_fixtures as fx
+from tests.agent_fakes import FakeClient
 
 PAGES = Path(__file__).resolve().parents[1] / "src" / "ui" / "views"
 TIMEOUT = 60
@@ -17,7 +20,17 @@ def tree(tmp_path_factory):
 
 
 @pytest.fixture
-def env(tree, monkeypatch):
+def fake(tmp_path, monkeypatch):
+    """모의 거래소 — 대시보드 상태 카드·사이드바가 REST 를 부르지 않는지 `calls` 로 본다."""
+    monkeypatch.setenv("AT_AGENT_DIR", str(tmp_path / "agent"))
+    monkeypatch.setattr(settings, "load_env", lambda: None)
+    c = FakeClient()
+    monkeypatch.setattr(service, "FACTORY", lambda mode: TradingService(c, mode, tmp_path / "agent", tmp_path / "r.yaml"))
+    return c
+
+
+@pytest.fixture
+def env(tree, fake, monkeypatch):
     monkeypatch.setenv("AT_OUT_DIR", str(tree["out"]))
     monkeypatch.setenv("AT_DATA_DIR", str(tree["norm"]))
     monkeypatch.setenv("AT_VAULT_DIR", str(tree["vault"]))
@@ -25,7 +38,7 @@ def env(tree, monkeypatch):
 
 
 @pytest.fixture
-def empty_env(tmp_path, monkeypatch):
+def empty_env(tmp_path, fake, monkeypatch):
     for k in ("AT_OUT_DIR", "AT_DATA_DIR", "AT_VAULT_DIR"):
         monkeypatch.setenv(k, str(tmp_path / k))
 
@@ -44,11 +57,14 @@ def _info(at: AppTest) -> str:
     return "\n".join(i.value for i in at.info)
 
 
-def test_overview(env):
+def test_overview(env, fake):
     at = _run("overview.py")
     md = _md(at)
     assert md.count('class="kpi-card') == 4
     assert "판정 " in md and "Phase 4" in md
+    assert 'class="next-step"' in md and "다음 단계" in md
+    assert 'class="agent-status"' in md and "DEMO" in md and "미가동" in md  # 에이전트 상태 카드(맨 위)
+    assert fake.calls == []  # 상태 카드는 거래소 REST 를 부르지 않는다
     assert len(at.dataframe) == 1  # 최근 검증 거래
     assert [c.label for c in at.checkbox] == ["T-4 · 사람: 원본 수동 다운로드"]
     assert all(c.disabled for c in at.checkbox)
@@ -64,7 +80,11 @@ def test_walkforward(env):
 
 def test_explore_filters(env):
     at = _run("explore.py")
-    assert len(at.dataframe) == 1  # run 표
+    assert len(at.dataframe) == 2  # run 표 + 선택 후보 비교
+    assert len(at.dataframe[1].value) == 3
+    at.selectbox(key="ex-rank").set_value("최대 낙폭 낮은 순").run()
+    assert not at.exception
+    assert at.dataframe[0].value["mdd"].is_monotonic_increasing
     at.multiselect(key="ex-trigger").set_value(["h1"]).run()
     assert not at.exception
     assert "표시 2 / 전체 4 run" in _md(at)
@@ -88,6 +108,9 @@ def test_trades_walkforward_and_span(env):
 def test_empty_outputs_show_notice(empty_env, page, needle):
     at = _run(page)
     assert needle in _info(at)
+    if page == "overview.py":
+        assert 'class="agent-status"' in _md(at)  # 리포트가 없어도 상태 카드는 보인다
+        assert "첫 검증 만들기" in _md(at)
 
 
 def test_missing_equity_notice(env, tmp_path, monkeypatch):

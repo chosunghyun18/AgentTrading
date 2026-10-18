@@ -7,10 +7,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from src.agent import strategies as sg
 from src.backtest.export_equity import export_paths
 from src.shared import settings as cfg
 from src.ui import data as ud
-from src.ui import theme
+from src.ui import theme, trading
 
 ROOT = cfg.ROOT
 EXPORT_CMD = "python -m src.backtest.export_equity --report data/out/backtest/walkforward/{name}.json"
@@ -138,8 +139,45 @@ def setup(title: str) -> None:
     st.title(title)
 
 
+def default_report_name() -> str | None:
+    """현재 선택 → `default+funding` → 첫 번째. 삭제된 선택은 무시한다."""
+    names = ud.list_reports(path("AT_OUT_DIR"))
+    if not names:
+        return None
+    selected = st.session_state.get("report")
+    if selected in names:
+        return selected
+    return "default+funding" if "default+funding" in names else names[0]
+
+
+def status_snapshot() -> dict:
+    """사이드바·대시보드 상태 한 묶음 — 네트워크 호출 없음(모드·HALT 파일·키 유무·전략 레지스트리·리포트 JSON 만).
+
+    벤치마크 관례(FreqUI Dry/Live 배지·OctoBot 상태 아이콘·LangAlpha "live 만 요란"): 모드·정지·전략·판정이 어느 화면에서나 보인다.
+    """
+    svc = trading.service()
+    reg = sg.registry()
+    now = sg.active(reg)
+    nxt = next((s for s in reg if s.status == "next"), None)
+    name = default_report_name()
+    rep = report(name) if name else None
+    return {"mode": svc.mode, "halted": bool(svc.halted()), "has_keys": bool(svc.client.has_keys), "symbol": svc.symbol,
+            "strategy": now.name if now else None, "next": nxt.name if nxt else None,
+            "report": name if rep is not None else None, "verdict": rep.get("verdict") if rep is not None else None}
+
+
+def sidebar_status() -> None:
+    st.sidebar.markdown(theme.sidebar_status_html(status_snapshot()), unsafe_allow_html=True)
+
+
+def agent_status_card() -> None:
+    """대시보드 맨 위 — 에이전트가 지금 무엇으로 거래하나(모드·HALT·적용 전략·다음 후보·키·판정)."""
+    with card("agent"):
+        st.markdown(theme.agent_status_html(status_snapshot()), unsafe_allow_html=True)
+
+
 def card(key: str):
-    """흰 배경·그림자 카드 컨테이너(CSS `st-key-card-*`)."""
+    """테마 표면·경계 카드 컨테이너(CSS `st-key-card-*`)."""
     return st.container(key=f"card-{key}")
 
 
@@ -148,8 +186,7 @@ def select_report() -> str | None:
     names = ud.list_reports(path("AT_OUT_DIR"))
     if not names:
         return None
-    default = "default+funding" if "default+funding" in names else names[0]
-    return st.sidebar.selectbox("판정 리포트", names, index=names.index(default), key="report")
+    return st.sidebar.selectbox("판정 리포트", names, index=names.index(default_report_name()), key="report")
 
 
 def default_index(options: list[str], preferred=("default+funding", "default")) -> int:
@@ -211,9 +248,45 @@ def trade_table(df: pd.DataFrame) -> pd.DataFrame:
 
 PCT = st.column_config.NumberColumn(format="percent")
 TS = st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm")
-TRADE_CONFIG = {"net": PCT, "진입": TS, "청산": TS}
+TRADE_CONFIG = {"진입": TS, "청산": TS}  # net 은 `trade_styler` 가 부호·색까지 붙여 표시한다
+
+SIDE_GLYPH = {"long": "▲ 롱", "short": "▼ 숏"}
+
+
+def pnl_css(v) -> str:
+    """손익 셀 CSS — 이익 PROFIT · 손실 LOSS · 0/결측 INFO(색만으로 뜻을 전하지 않도록 값에는 부호를 붙인다)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if x != x:
+        return f"color:{theme.INFO}"
+    return f"color:{theme.PROFIT}" if x > 0 else f"color:{theme.LOSS}" if x < 0 else f"color:{theme.INFO}"
+
+
+def _side_css(v) -> str:
+    return f"color:{theme.PROFIT}" if v == "long" else f"color:{theme.LOSS}" if v == "short" else ""
+
+
+def trade_styler(df: pd.DataFrame):
+    """거래 표 Styler — net 은 부호 있는 % 와 손익 색, 방향은 글리프(▲ 롱 / ▼ 숏)와 색. 열 순서·값은 `trade_table` 과 같다."""
+    t = trade_table(df)
+    sty = t.style
+    if "net" in t.columns:
+        sty = sty.map(pnl_css, subset=["net"]).format("{:+.2%}", subset=["net"], na_rep="–")
+    if "방향" in t.columns:
+        sty = sty.map(_side_css, subset=["방향"]).format(lambda v: SIDE_GLYPH.get(v, v), subset=["방향"])
+    return sty
+
+
+def pnl_styler(df: pd.DataFrame, cols, fmt: str = "{:+,.2f}"):
+    """임의 표의 손익 열(`cols`)에 부호·색을 붙인 Styler. 없는 열은 건너뛴다."""
+    sty = df.style
+    for c in (c for c in cols if c in df.columns):
+        sty = sty.map(pnl_css, subset=[c]).format(fmt, subset=[c], na_rep="–")
+    return sty
 
 
 def chart(fig, key: str) -> None:
-    """Plotly 차트 — Streamlit 테마 대신 `charts` 레이아웃(흰 카드 배경·토큰 색)을 그대로 쓴다."""
+    """Plotly 차트 — `charts` 레이아웃의 표면·토큰 색을 그대로 쓴다."""
     st.plotly_chart(fig, theme=None, width="stretch", key=key)

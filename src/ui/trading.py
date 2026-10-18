@@ -12,7 +12,7 @@ from src.agent.bybit import BybitError
 from src.agent.service import OrderUnknown, RiskRejected
 from src.ui import theme
 
-MODE_COLORS = {"demo": theme.PRIMARY, "live": theme.DANGER}
+MODE_COLORS = theme.MODE_COLORS  # DEMO 기본색 · LIVE 빨강(요란한 모드는 하나뿐)
 MODE_LABELS = {"demo": "DEMO · 모의 자금", "live": "LIVE · 실제 자금"}
 
 GUIDE = """
@@ -36,7 +36,7 @@ def service() -> agent_service.TradingService:
 def banner(svc) -> None:
     """페이지 상단 모드 배너. LIVE 면 화면 위 빨간 띠도 그린다."""
     color = MODE_COLORS[svc.mode]
-    css = (f"<style>[data-testid='stHeader']{{border-top:6px solid {theme.DANGER};}}</style>"
+    css = (f"<style>[data-testid='stHeader']{{border-top:6px solid {theme.LOSS};}}</style>"
            if svc.mode == "live" else "")
     halted = " " + theme.badge_html("정지(HALT)", theme.WARNING) if svc.halted() else ""
     st.markdown(f"{css}{theme.badge_html(MODE_LABELS[svc.mode], color)}{halted} "

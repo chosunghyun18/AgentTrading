@@ -33,3 +33,6 @@ config/risk.yaml
 .venv*/
 # Streamlit 인증 비밀값 (st.login)
 .streamlit/secrets.toml
+
+# Local review workspaces and session artifacts
+.claude/handoff/

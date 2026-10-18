@@ -1,4 +1,7 @@
-"""Plotly 차트 변환 — 입력 프레임 → `go.Figure`(Streamlit 무관, 단위 테스트 대상). 색은 `theme` 토큰만 쓴다."""
+"""Plotly 차트 변환 — 입력 프레임 → `go.Figure`(Streamlit 무관, 단위 테스트 대상). 색은 `theme` 토큰만 쓴다.
+
+레이아웃 관례(Obsidian `design/ui-ux-v2-benchmark.md`): 다크 표면, 격자 = BORDER, x unified hover, 범례 위 오른쪽, 고정 폭 없음(높이만).
+"""
 
 from __future__ import annotations
 
@@ -6,28 +9,75 @@ from collections.abc import Mapping
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from src.ui import theme
 
-_LAYOUT = dict(template="plotly_white", margin=dict(l=40, r=16, t=48, b=36), height=320,
-               paper_bgcolor=theme.CARD_BG, plot_bgcolor=theme.CARD_BG,
-               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-               font=dict(size=12, color=theme.TEXT))
+_AXIS = dict(gridcolor=theme.BORDER, zerolinecolor=theme.BORDER, linecolor=theme.BORDER, tickfont=dict(color=theme.TEXT_SECONDARY))
+_LAYOUT = dict(template="plotly_dark", margin=dict(l=40, r=16, t=48, b=36), height=320,
+               paper_bgcolor=theme.CARD_BG, plot_bgcolor=theme.CARD_BG, hovermode="x unified",
+               hoverlabel=dict(bgcolor=theme.MAIN_BG, bordercolor=theme.BORDER, font=dict(color=theme.TEXT)),
+               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+               font=dict(size=12, color=theme.TEXT), xaxis=_AXIS, yaxis=_AXIS)
+_RANGE_BUTTONS = [dict(count=1, label="1m", step="month", stepmode="backward"),
+                  dict(count=3, label="3m", step="month", stepmode="backward"),
+                  dict(count=6, label="6m", step="month", stepmode="backward"),
+                  dict(count=1, label="1y", step="year", stepmode="backward"), dict(step="all", label="all")]
+
+
+def _title(text: str | None) -> dict:
+    return dict(text=text or "", font=dict(size=14), x=0, xanchor="left", y=0.98)
 
 
 def _fig(title: str | None = None, **kw) -> go.Figure:
+    """공통 레이아웃을 깐 뒤 kw 를 덧씌운다(`update_layout` 은 중첩 dict 를 병합하므로 축 격자 색이 남는다)."""
     f = go.Figure()
-    f.update_layout(**{**_LAYOUT, **kw}, title=dict(text=title or "", font=dict(size=14), x=0, xanchor="left", y=0.98))
+    f.update_layout(_LAYOUT)
+    f.update_layout(title=_title(title), **kw)
     return f
 
 
+def _rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def drawdown(equity: pd.Series) -> pd.Series:
+    """자본곡선 → 고점 대비 낙폭(≤ 0). 순수 함수(단위 테스트)."""
+    return equity / equity.cummax() - 1.0
+
+
 def equity_fig(eq: pd.DataFrame) -> go.Figure:
-    """일별 자본곡선 — 프로필(default·bybit)당 선 1개, 기준선 1.0."""
-    f = _fig("검증 구간 자본곡선 (시작 = 1.0)")
-    for name, g in eq.groupby("profile", sort=False):
+    """일별 자본곡선 2단 — 위: 프로필(default·bybit)당 선 1개 + 기준선 1.0, 아래: 고점 대비 낙폭(손실 색 영역).
+
+    벤치마크 관례(Vibe-Trading EquityChart·nof0 기준선·FreqUI timerange): 낙폭 패널, 초기 자본 점선, 기간 버튼, x unified.
+    trace 순서: 자본 선(프로필 순) → 낙폭(범례 숨김, 두 번째 행).
+    """
+    f = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28], vertical_spacing=0.04)
+    f.update_layout(_LAYOUT)
+    f.update_layout(title=_title("검증 구간 자본곡선 (시작 = 1.0) · 낙폭"), height=440,
+                    xaxis2=_AXIS, yaxis2=dict(**_AXIS, tickformat=".0%"),
+                    xaxis=dict(rangeselector=dict(buttons=_RANGE_BUTTONS, bgcolor=theme.SURFACE, activecolor=theme.BORDER,
+                                                  bordercolor=theme.BORDER, borderwidth=1, font=dict(color=theme.TEXT))))
+    groups = list(eq.groupby("profile", sort=False))
+    for name, g in groups:
         f.add_trace(go.Scatter(x=g["date"], y=g["equity"], mode="lines", name=str(name),
-                               line=dict(color=theme.LINE_COLORS.get(str(name), theme.PRIMARY), width=2)))
-    f.add_hline(y=1.0, line=dict(color=theme.INFO, dash="dot", width=1))
+                               line=dict(color=theme.LINE_COLORS.get(str(name), theme.PRIMARY), width=2),
+                               hovertemplate="%{y:.4f}<extra>" + str(name) + "</extra>"), row=1, col=1)
+    f.add_hline(y=1.0, line=dict(color=theme.INFO, dash="dot", width=1), row=1, col=1)
+    worst = 0.0
+    for name, g in groups:
+        dd = drawdown(g["equity"].astype(float))
+        worst = min(worst, float(dd.min()) if len(dd) else 0.0)
+        color = theme.LINE_COLORS.get(str(name), theme.PRIMARY)
+        f.add_trace(go.Scatter(x=g["date"], y=dd, mode="lines", name=f"{name} 낙폭", showlegend=False,
+                               line=dict(color=color, width=1), fill="tozeroy", fillcolor=_rgba(theme.LOSS, 0.18),
+                               hovertemplate="%{y:.1%}<extra>" + str(name) + " 낙폭</extra>"), row=2, col=1)
+    if worst < 0:
+        f.add_hline(y=worst, line=dict(color=theme.LOSS, dash="dash", width=1), row=2, col=1,
+                    annotation_text=f"최대 낙폭 {worst:.1%}", annotation_position="bottom right",
+                    annotation_font=dict(color=theme.LOSS, size=11))
     return f
 
 

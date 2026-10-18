@@ -51,7 +51,7 @@ else:
     view_id += f"-{profile}-{span}-{r['strategy_id']}-{r['param_id']}"
 
 with common.card("trade-table"):
-    st.dataframe(common.trade_table(trades), width="stretch", height=320, key="trade-table",
+    st.dataframe(common.trade_styler(trades), width="stretch", height=320, key="trade-table",
                  column_config=common.TRADE_CONFIG)
 
 if trades.empty:
@@ -63,8 +63,8 @@ pad = c2.slider("전후 표시 시간(시간)", min_value=1, max_value=ud.MAX_PA
 t = trades.iloc[k]
 
 m = st.columns(5)
-m[0].metric("방향", "롱" if t["side"] == "long" else "숏")
-m[1].metric("net", f"{t['net_ret']:.2%}")
+m[0].metric("방향", common.SIDE_GLYPH.get(t["side"], str(t["side"])))
+m[1].metric("net", f"{t['net_ret']:+.2%}")
 m[2].metric("보유", f"{t['holding_min']:.0f}분")
 m[3].metric("청산 사유", str(t["exit_reason"]))
 m[4].metric("펀딩", f"{int(t['n_funding'])}회" if "n_funding" in t else "미반영")

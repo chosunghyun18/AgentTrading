@@ -1,4 +1,5 @@
-# AgentTrading 사용자 대시보드 — 로컬 전용(127.0.0.1). 디자인 값은 src/ui/theme.py 와 같아야 한다.
+# AgentTrading 콘솔 — 로컬 전용(127.0.0.1). 테마 값은 src/ui/theme.py 토큰 v2 와 같아야 한다(tests/test_ui_theme.py).
+# 근거: Obsidian design/ui-ux-v2-benchmark.md (오픈소스 트레이딩 UI 벤치마크 — 다크 기본, 손익 색 FreqUI, 중립 zinc)
 [server]
 address = "127.0.0.1"
 port = 8501
@@ -12,18 +13,26 @@ serverAddress = "127.0.0.1"
 toolbarMode = "minimal"
 
 [theme]
-base = "light"
-primaryColor = "#409EFF"
-backgroundColor = "#f0f2f5"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#303133"
-redColor = "#F56C6C"
-greenColor = "#67C23A"
-orangeColor = "#E6A23C"
-blueColor = "#409EFF"
-grayColor = "#909399"
+base = "dark"
+primaryColor = "#3b82f6"
+backgroundColor = "#09090b"
+secondaryBackgroundColor = "#18181b"
+textColor = "#f4f4f5"
+linkColor = "#3b82f6"
+borderColor = "#27272a"
+dataframeBorderColor = "#27272a"
+baseRadius = "0.375rem"
+showSidebarBorder = true
+font = "sans-serif"
+codeFont = "monospace"
+redColor = "#ef5350"
+greenColor = "#12bb7b"
+orangeColor = "#f59e0b"
+blueColor = "#3b82f6"
+grayColor = "#71717a"
+chartCategoricalColors = ["#38bdf8", "#a78bfa", "#f472b6", "#2dd4bf"]
 
 [theme.sidebar]
-backgroundColor = "#304156"
-textColor = "#bfcbd9"
-primaryColor = "#409EFF"
+backgroundColor = "#18181b"
+textColor = "#a1a1aa"
+primaryColor = "#3b82f6"
