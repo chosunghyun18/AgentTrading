@@ -35,6 +35,7 @@ VARS: dict[str, tuple[str, str]] = {
     "AT_SYMBOL": ("XBTUSD", "백테스트 심볼(BitMEX 인버스 테이프)"),
     "AT_TRADE_SYMBOL": ("BTCUSDT", "실행 심볼(Bybit linear) — 콘솔·에이전트 (환경변수만, `src/agent/settings.py`)"),
     "AT_AGENT_DIR": (str(ROOT / "data" / "agent"), "에이전트 상태·감사 로그 폴더 (환경변수만, `src/agent/settings.py`)"),
+    "AT_STORE_PATH": (str(ROOT / "data" / "agent" / "platform.sqlite"), "플랫폼 저장소(SQLite) — 에이전트·run·자본곡선·이벤트·명령"),
     "AT_RISK_FILE": (str(ROOT / "config" / "risk.yaml"), "계정 리스크 한도 파일(사용자 값, 커밋 금지) (환경변수만)"),
     "AT_VAULT_DIR": ("", "볼트 프로젝트 폴더(선택). 비면 볼트 연동(사람 할 일·Phase 진행 카드) 끔"),
     "AT_LIVE_ENABLED": ("0", "LIVE 잠금 해제 — 정확히 \"1\" 일 때만(환경변수만, `src/agent/settings.live_unlocked`)"),

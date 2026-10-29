@@ -266,7 +266,9 @@ def test_roundtrips_definition_matches_doc():
     assert allowed == {
         "side": {"long", "short"},
         # c1 값은 design/phase3-c1-meanrev-maker.md "스키마·코드 대응"(T-20261009-17)
-        "entry_reason": {"h1_breakout", "h2_momentum", "h3_meanrev", "c1_meanrev_limit", "c1_meanrev_market"},
+        # sma_cross 는 플랫폼 예제 전략(additive) — task/platform-min-w123.md
+        "entry_reason": {"h1_breakout", "h2_momentum", "h3_meanrev", "c1_meanrev_limit", "c1_meanrev_market",
+                         "sma_cross"},
         "exit_reason": {"stop", "take_profit", "time", "end_of_data", "mean_revert"},
     }
 

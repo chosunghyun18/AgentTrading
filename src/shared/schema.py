@@ -31,7 +31,8 @@ SIDES = frozenset({"buy", "sell"})
 SOURCES = frozenset({"aoa", "synthetic"})
 RT_SIDES = frozenset({"long", "short"})
 ENTRY_REASONS = frozenset({"h1_breakout", "h2_momentum", "h3_meanrev",
-                           "c1_meanrev_limit", "c1_meanrev_market"})  # c1: Obsidian design/phase3-c1-meanrev-maker.md
+                           "c1_meanrev_limit", "c1_meanrev_market",
+                           "sma_cross"})  # c1: Obsidian design/phase3-c1-meanrev-maker.md
 EXIT_REASONS = frozenset({"stop", "take_profit", "time", "end_of_data", "mean_revert"})
 LIQUIDITY = frozenset({"maker", "taker"})
 

@@ -69,6 +69,7 @@ curl -fsS http://127.0.0.1:8501/_stcore/health   # ok
 | `AT_VAULT_DIR` | (빈값) | 설계 문서 볼트 폴더(선택). 비면 "사람 할 일·Phase 진행" 카드만 비어 있다 |
 | `AT_TRADE_SYMBOL` | `BTCUSDT` | 실행 심볼(Bybit linear) — **환경변수만** |
 | `AT_AGENT_DIR` / `AT_RISK_FILE` | `data/agent` / `config/risk.yaml` | 에이전트 상태·감사 로그 · 계정 리스크 한도 — **환경변수만**(이미지 기본값은 `/app/data/...`) |
+| `AT_STORE_PATH` | `data/agent/platform.sqlite` | 플랫폼 저장소(SQLite, WAL) — 에이전트·run·자본곡선·이벤트·정지 명령. `data/agent/` 와 같이 git 제외 |
 | `AT_LIVE_ENABLED` | `0` | LIVE 잠금 해제 — 정확히 `1` 일 때만, **환경변수만** |
 | `BYBIT_*` | — | 거래소 키(`.env.example`). ui 컨테이너에는 주지 않는다 |
 

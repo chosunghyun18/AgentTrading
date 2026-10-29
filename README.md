@@ -145,6 +145,36 @@ python -m src.backtest.run --start 2020-03-01 --end 2020-04-01 --fee-profile byb
 
 로드맵과 단계별 완료 기준은 Obsidian `Projects/work/AgentTrading/task/todo.md` 참고.
 
+## 플랫폼 — 전략 플러그인 · 에이전트 · 런타임
+
+전략 = `src/strategy/builtin/<id>.py` 모듈 1개(`Strategy` 하위 클래스 + `STRATEGY = ...`). 에이전트 = YAML 1장.
+같은 전략 코드가 backtest → shadow(주문 없음) → paper(Bybit **demo**) 를 돈다. **live 는 지원하지 않는다.**
+모든 run 은 `evidence=0` — 게이트 증거가 아니다. 예제 `sma_cross` 는 검증된 전략이 아니다.
+
+```bash
+python -m src.cli.at strategy list
+python -m src.cli.at strategy check sma_cross        # 계약 테스트(스키마·미래 누수·결정성)
+cat > my-agent.yaml <<'YAML'
+id: sma-shadow
+strategy: sma_cross
+mode: shadow            # shadow | paper
+symbol: BTCUSDT
+params: {fast: 10, slow: 30}
+risk_frac: 0.01         # 거래당 위험 비율(≤ 0.05)
+max_leverage: 2
+YAML
+python -m src.cli.at agent add my-agent.yaml
+python -m src.cli.at backtest sma-shadow --start 2019-06-01 --end 2019-06-08   # 로컬 XBTUSD 1분봉, 기본 표본만
+python -m src.cli.at run sma-shadow                  # 1분 폴링, Ctrl+C 또는 아래 stop
+python -m src.cli.at stop sma-shadow                 # 화면 '에이전트' 의 정지 버튼과 같다
+python -m src.cli.at status
+```
+
+- paper 는 `.env` 의 Bybit Demo 키, 콘솔 '리스크' 한도 저장, MDD 계정 등록이 모두 있어야 시작한다. 주문은 콘솔과 같은
+  `TradingService` 를 거친다(리스크 검사·MDD·감사 로그). paper 에이전트는 심볼당 1개.
+- 백테스트는 인버스(XBT, 시작 = 1.0), shadow·paper 는 linear(USDT). paper 손절·익절은 거래소 MarkPrice 트리거라 백테스트와 다르다.
+- 저장소: `AT_STORE_PATH`(기본 `data/agent/platform.sqlite`, git 제외).
+
 ## 화면 구성 — 오픈소스 트레이딩 UI 벤치마크 적용 (2026-10-17)
 
 `scripts/ui.sh` → http://127.0.0.1:8501. 사이드바 그룹은 **홈(대시보드, 첫 화면) · 에이전트(전략·모니터·거래 기록) · 백테스트(워크포워드·전략 탐색·거래 상세·진단) · 설정·안전(리스크·계정·연결)**.

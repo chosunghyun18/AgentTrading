@@ -28,6 +28,7 @@ NAV = {
         st.Page(PAGES / "overview.py", title="대시보드", icon=":material/dashboard:", default=True),
     ],
     "에이전트": [
+        st.Page(PAGES / "agents.py", title="에이전트", icon=":material/smart_toy:"),
         st.Page(PAGES / "strategy.py", title="전략", icon=":material/psychology:"),
         st.Page(PAGES / "console_monitor.py", title="모니터", icon=":material/monitor_heart:"),
         st.Page(PAGES / "console_history.py", title="거래 기록", icon=":material/receipt_long:"),
