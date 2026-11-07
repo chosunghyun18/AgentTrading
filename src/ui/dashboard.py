@@ -79,7 +79,6 @@ def decision(rep: dict, profile: str) -> None:
     else:
         failed = [k["label"] for k in ud.gate_kpis(rep, "default") if not k["ok"]]
         st.write("다음: 진단 화면에서 " + (" · ".join(failed) if failed else "판정 리포트") + " 확인")
-    st.caption("백테스트 검증 결과 · 실제 계정 수익률과 별개")
 
 
 def empty_state() -> None:

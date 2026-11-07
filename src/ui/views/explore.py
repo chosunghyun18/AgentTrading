@@ -49,7 +49,7 @@ with common.card("runs"):
                                    ascending=[ascending, True, True], na_position="last", kind="stable").copy()
     table.insert(0, "#", range(1, len(table) + 1))
     styled = table.style.apply(
-        lambda r: [f"background-color: {theme.PROFIT}22" if r["gate"] == "pass" else ""] * len(r), axis=1)
+        lambda r: [f"background-color: {theme.tokens()['PROFIT']}22" if r["gate"] == "pass" else ""] * len(r), axis=1)
     st.dataframe(styled, hide_index=True, width="stretch", height=480, key="run-table",
                  column_config={"mdd": common.PCT, "total_net_ret": common.PCT, "total_gross_ret": common.PCT,
                                 "sharpe": st.column_config.NumberColumn(format="%.3f")})

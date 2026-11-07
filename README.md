@@ -178,7 +178,7 @@ python -m src.cli.at status
 ## 화면 구성 — 오픈소스 트레이딩 UI 벤치마크 적용 (2026-10-17)
 
 `scripts/ui.sh` → http://127.0.0.1:8501. 사이드바 그룹은 **홈(대시보드, 첫 화면) · 에이전트(전략·모니터·거래 기록) · 백테스트(워크포워드·전략 탐색·거래 상세·진단) · 설정·안전(리스크·계정·연결)**.
-다크 기본, 손익은 초록/빨강 + ▲/▼ 글리프, 모드(DEMO/LIVE)·정지(HALT)·키·적용 전략·판정이 사이드바에 항상 보인다(네트워크 호출 없음).
+라이트·다크·시스템(OS 설정) 3모드 — 오른쪽 위 메뉴에서 고른다(토큰 v3, Obsidian `design/theme-tokens-v3-light-dark.md`). 손익은 초록/빨강 + ▲/▼ 글리프, 모드(DEMO/LIVE)·정지(HALT)·키·적용 전략·판정이 사이드바에 항상 보인다(네트워크 호출 없음).
 근거·토큰: Obsidian `research/ui-benchmark-open-source.md`, `design/ui-ux-v2-benchmark.md`.
 공개 저장소별 스타 수·적용한 UI 패턴·비교 한계: [오픈소스 트레이딩 UI 검토](docs/open-source-trading-ui-review.md).
 포털 화면 구조·단계별 변경 순서·검수 기준·작업 목록: [포털 UI/UX 재설계 계획](docs/portal-redesign-plan.md).

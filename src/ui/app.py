@@ -46,7 +46,7 @@ NAV = {
 }
 nav = st.navigation(NAV)
 st.markdown(theme.CSS, unsafe_allow_html=True)
-st.sidebar.markdown('<div class="terminal-brand"><span class="mark">▥</span><span>AgentTrading<small>RESEARCH / EXECUTION</small></span></div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="terminal-brand"><span class="mark">▥</span><span>AgentTrading</span></div>', unsafe_allow_html=True)
 common.sidebar_status()
 st.sidebar.caption("기본 127.0.0.1 · 외부 공개는 로그인 + 허용 이메일(DEPLOY.md) · 수동 주문 없음 · 에이전트는 관문을 모두 통과한 전략만 쓴다")
 nav.run()

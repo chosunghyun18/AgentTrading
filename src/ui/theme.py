@@ -1,8 +1,11 @@
-"""디자인 토큰 v2 — 오픈소스 트레이딩 UI 벤치마크 값(Obsidian `research/ui-benchmark-open-source.md`, 설계 `design/ui-ux-v2-benchmark.md`).
+"""디자인 토큰 v3 — 라이트·다크 두 벌 + 시스템(Streamlit 기본: OS 설정 추종). 설계 Obsidian `design/theme-tokens-v3-light-dark.md`.
 
-- 중립 색은 Tailwind zinc(nof0·Jesse·Vibe-Trading 공통 기반), 손익 색은 FreqUI `--color-profit/--color-loss`.
+- 다크 = v2(오픈소스 트레이딩 UI 벤치마크, `design/ui-ux-v2-benchmark.md`). 중립은 Tailwind zinc, 손익은 FreqUI `--color-profit/--color-loss`.
+- 라이트 = zinc + 의미 색 600~700 단계 — 흰 배경·카드 모두 글자 대비 WCAG AA 4.5:1 이상(`tests/test_ui_theme.py`).
 - 색은 뜻에만 쓴다: 이익/손실/경고(LIVE)/기본/중립. 손익은 색과 글리프(▲/▼)를 함께 쓴다.
-- `.streamlit/config.toml` 테마 값과 같아야 한다(`tests/test_ui_theme.py` 가 검사).
+- HTML·CSS 색(`theme.PROFIT` 등)은 CSS 변수 — `.stApp` 의 `light-dark()` 로 브라우저가 모드를 즉시 따른다.
+  hex 가 필요한 곳(Plotly·표 Styler)은 `tokens()`(서버가 아는 모드, 모르면 다크).
+  `.streamlit/config.toml` 의 `[theme.light]`/`[theme.dark]` 와 같아야 한다.
 """
 
 from __future__ import annotations
@@ -10,20 +13,65 @@ from __future__ import annotations
 import html
 import math
 
-# 중립 (zinc-950 · 900 · 800 · 100 · 400 · 500)
-MAIN_BG = "#09090b"
-SURFACE = "#18181b"
-BORDER = "#27272a"
-TEXT = "#f4f4f5"
-TEXT_SECONDARY = "#a1a1aa"
-INFO = "#71717a"
+_NEUTRAL = {  # zinc — 다크 950·900·800·100·400·500 / 라이트 white·100·200·950·600·500
+    "dark": dict(MAIN_BG="#09090b", SURFACE="#18181b", BORDER="#27272a", TEXT="#f4f4f5", TEXT_SECONDARY="#a1a1aa", INFO="#71717a"),
+    "light": dict(MAIN_BG="#ffffff", SURFACE="#f4f4f5", BORDER="#e4e4e7", TEXT="#09090b", TEXT_SECONDARY="#52525b", INFO="#71717a"),
+}
+_SEMANTIC = {  # 이익·손실·경고(HALT)·기본 — 다크 FreqUI·amber-500·blue-500 / 라이트 emerald-700·red-700·amber-700·blue-600
+    "dark": dict(PROFIT="#12bb7b", LOSS="#ef5350", WARNING="#f59e0b", PRIMARY="#3b82f6"),
+    "light": dict(PROFIT="#047857", LOSS="#b91c1c", WARNING="#b45309", PRIMARY="#2563eb"),
+}
+_CHART = {  # 범주 색(파이·막대, config chartCategoricalColors) · 선 색(프로필, 손익 색과 겹치지 않게) · Plotly 템플릿
+    "dark": dict(KPI_COLORS=("#38bdf8", "#a78bfa", "#f472b6", "#2dd4bf"),
+                 LINE_COLORS={"default": "#60a5fa", "bybit": "#a78bfa"}, PLOTLY_TEMPLATE="plotly_dark"),
+    "light": dict(KPI_COLORS=("#0284c7", "#7c3aed", "#db2777", "#0d9488"),
+                  LINE_COLORS={"default": "#2563eb", "bybit": "#7c3aed"}, PLOTLY_TEMPLATE="plotly_white"),
+}
+MODES = ("dark", "light")
 
-# 의미 색
-PROFIT = "#12bb7b"   # FreqUI --color-profit
-LOSS = "#ef5350"     # FreqUI --color-loss
-WARNING = "#f59e0b"  # amber-500 — 경고·HALT
-PRIMARY = "#3b82f6"  # blue-500
+
+def _build(m: str) -> dict:
+    t = {**_NEUTRAL[m], **_SEMANTIC[m], **_CHART[m]}
+    t.update(SUCCESS=t["PROFIT"], DANGER=t["LOSS"],  # 판정·배지 별칭(통과 = 이익 색, 미달 = 손실 색)
+             SIDEBAR_BG=t["SURFACE"], SIDEBAR_TEXT=t["TEXT_SECONDARY"], SIDEBAR_ACTIVE=t["PRIMARY"], CARD_BG=t["SURFACE"],
+             # 모드 — LIVE 만 요란(실제 자금 = 손실 색 빨강, 독립 검토 2026-10-17 MUST-3), DEMO 는 기본색. HALT 는 amber
+             MODE_COLORS={"demo": t["PRIMARY"], "live": t["LOSS"]},
+             # 판정 → 상태 색: 통과 success · 미달 danger · 거래 부족 warning · 없음/대기 info
+             VERDICT_COLORS={"pass": t["PROFIT"], "fail": t["LOSS"], "insufficient": t["WARNING"]})
+    return t
+
+
+_TOKENS = {m: _build(m) for m in MODES}
+_COLOR_NAMES = ("MAIN_BG", "SURFACE", "BORDER", "TEXT", "TEXT_SECONDARY", "INFO", "PROFIT", "LOSS", "WARNING", "PRIMARY")
+
+
+def mode() -> str:
+    """서버가 아는 현재 세션 모드. 첫 로드·전환 직후엔 틀릴 수 있다(streamlit#11920) — hex 가 꼭 필요한 곳(Plotly 선·표 Styler)만 쓴다."""
+    try:
+        import streamlit as st
+        return "light" if st.context.theme.type == "light" else "dark"
+    except Exception:  # Streamlit 밖
+        return "dark"
+
+
+def tokens(m: str | None = None) -> dict:
+    """모드별 hex 토큰. 생략하면 `mode()`."""
+    return _TOKENS[m or mode()]
+
+
+def _var(name: str) -> str:
+    return f"var(--at-{name.lower().replace('_', '-')})"
+
+
+# HTML·CSS 용 색 = CSS 변수. 값은 `CSS` 가 `.stApp` 에 `light-dark(라이트, 다크)` 로 정의하므로 브라우저가 Streamlit 이
+# 고른 모드(`.stApp` color-scheme)를 즉시 따른다 — 메뉴 전환에 서버 재실행이 필요 없다.
+MAIN_BG, SURFACE, BORDER, TEXT, TEXT_SECONDARY, INFO, PROFIT, LOSS, WARNING, PRIMARY = map(_var, _COLOR_NAMES)
 SUCCESS, DANGER = PROFIT, LOSS  # 판정·배지 별칭(통과 = 이익 색, 미달 = 손실 색)
+KPI_COLORS = tuple(f"var(--at-cat-{i})" for i in range(4))  # 범주 색(KPI 아이콘) = config chartCategoricalColors
+# 모드 — LIVE 만 요란(실제 자금 = 손실 색 빨강, 독립 검토 2026-10-17 MUST-3), DEMO 는 기본색. HALT 는 amber
+MODE_COLORS = {"demo": PRIMARY, "live": LOSS}
+# 판정 → 상태 색: 통과 success · 미달 danger · 거래 부족 warning · 없음/대기 info
+VERDICT_COLORS = {"pass": SUCCESS, "fail": DANGER, "insufficient": WARNING}
 
 # 사이드바·본문·카드
 SIDEBAR_WIDTH = 230
@@ -38,16 +86,7 @@ CARD_RADIUS = 8
 # KPI 카드
 KPI_HEIGHT = 108
 KPI_ICON_SIZE = 40
-KPI_COLORS = ("#38bdf8", "#a78bfa", "#f472b6", "#2dd4bf")  # 범주 색(파이·막대) = config chartCategoricalColors
 
-# 선 색(프로필) — 손익 색과 겹치지 않게
-LINE_COLORS = {"default": "#60a5fa", "bybit": "#a78bfa"}
-
-# 모드 — LIVE 만 요란(실제 자금 = 손실 색 빨강, 독립 검토 2026-10-17 MUST-3), DEMO 는 기본색. HALT 는 amber
-MODE_COLORS = {"demo": PRIMARY, "live": LOSS}
-
-# 판정 → 상태 색: 통과 success · 미달 danger · 거래 부족 warning · 없음/대기 info
-VERDICT_COLORS = {"pass": SUCCESS, "fail": DANGER, "insufficient": WARNING}
 VERDICT_LABELS = {"pass": "통과", "fail": "미달", "insufficient": "거래 부족"}
 
 
@@ -59,8 +98,16 @@ def verdict_label(verdict: str | None) -> str:
     return VERDICT_LABELS.get(verdict or "", "대기")
 
 
+def _root_vars() -> str:
+    lt, dk = _TOKENS["light"], _TOKENS["dark"]
+    pairs = [(_var(n)[4:-1], lt[n], dk[n]) for n in _COLOR_NAMES]
+    pairs += [(f"--at-cat-{i}", lt["KPI_COLORS"][i], dk["KPI_COLORS"][i]) for i in range(4)]
+    return " ".join(f"{k}: light-dark({a}, {b});" for k, a, b in pairs)
+
+
 CSS = f"""
 <style>
+.stApp {{ {_root_vars()} }}
 [data-testid="stMainBlockContainer"] {{ padding: {MAIN_PADDING}; max-width: 100%; }}
 section[data-testid="stSidebar"] {{ width: {SIDEBAR_WIDTH}px !important; min-width: {SIDEBAR_WIDTH}px !important; }}
 [class*="st-key-card-"] {{
@@ -74,7 +121,6 @@ section[data-testid="stSidebar"] {{ width: {SIDEBAR_WIDTH}px !important; min-wid
 .kpi-body {{ text-align: right; }}
 .kpi-label {{ color: {TEXT_SECONDARY}; font-size: 13px; font-weight: 600; margin-bottom: 4px; }}
 .kpi-value {{ font-size: 24px; font-weight: 700; color: {TEXT}; font-variant-numeric: tabular-nums; }}
-.kpi-th {{ font-size: 12px; color: {TEXT_SECONDARY}; margin-top: 2px; }}
 .kpi-bad .kpi-value {{ color: {LOSS}; }}
 .kpi-ok .kpi-value {{ color: {PROFIT}; }}
 .badge {{ display: inline-block; padding: 2px 10px; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 700;
@@ -91,7 +137,6 @@ section[data-testid="stSidebar"] {{ width: {SIDEBAR_WIDTH}px !important; min-wid
 .agent-status .k {{ color: {TEXT_SECONDARY}; font-size: 12px; margin-right: 4px; }}
 .terminal-brand {{ display:flex; align-items:center; gap:10px; color:{TEXT}; font-size:18px; font-weight:750; padding:8px 0 18px; }}
 .terminal-brand .mark {{ color:{PRIMARY}; font-family:monospace; font-size:25px; }}
-.terminal-brand small {{ display:block; color:{TEXT_SECONDARY}; font-size:10px; letter-spacing:.14em; font-weight:500; }}
 .research-context {{ display:flex; flex-wrap:wrap; gap:8px 24px; color:{TEXT_SECONDARY}; font-size:12px; padding:12px 0 18px; }}
 .research-context b {{ color:{TEXT}; font-weight:500; font-variant-numeric:tabular-nums; }}
 .next-step {{ display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px; padding:16px 20px;
@@ -149,11 +194,12 @@ def pnl_html(v: float | None, fmt: str = "{:+.2%}") -> str:
 
 
 def kpi_card_html(label: str, value: str, threshold: str, ok: bool, icon: str, color: str) -> str:
+    """큰 값 아래 작은 글씨는 두지 않는다(2026-11-07 사용자 지시) — 기준은 마우스를 올리면 보인다."""
     cls = "kpi-card kpi-ok" if ok else "kpi-card kpi-bad"
     pill = pill_html("통과", "up") if ok else pill_html("미달", "down")
-    return (f'<div class="{cls}">{icon_svg(icon, color)}<div class="kpi-body">'
+    return (f'<div class="{cls}" title="{html.escape(threshold)}">{icon_svg(icon, color)}<div class="kpi-body">'
             f'<div class="kpi-label">{html.escape(label)} {pill}</div><div class="kpi-value">{html.escape(value)}</div>'
-            f'<div class="kpi-th">{html.escape(threshold)}</div></div></div>')
+            f'</div></div>')
 
 
 def mode_badge_html(mode: str, halted: bool = False) -> str:

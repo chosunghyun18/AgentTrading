@@ -254,18 +254,22 @@ SIDE_GLYPH = {"long": "▲ 롱", "short": "▼ 숏"}
 
 
 def pnl_css(v) -> str:
-    """손익 셀 CSS — 이익 PROFIT · 손실 LOSS · 0/결측 INFO(색만으로 뜻을 전하지 않도록 값에는 부호를 붙인다)."""
+    """손익 셀 CSS — 이익 PROFIT · 손실 LOSS · 0/결측 INFO(색만으로 뜻을 전하지 않도록 값에는 부호를 붙인다).
+
+    `st.dataframe` 은 캔버스로 그려 CSS 변수를 못 읽으므로 hex(`theme.tokens()`, 서버가 아는 모드)를 쓴다.
+    """
     try:
         x = float(v)
     except (TypeError, ValueError):
         return ""
     if x != x:
-        return f"color:{theme.INFO}"
-    return f"color:{theme.PROFIT}" if x > 0 else f"color:{theme.LOSS}" if x < 0 else f"color:{theme.INFO}"
+        return f"color:{theme.tokens()['INFO']}"
+    return f"color:{theme.tokens()['PROFIT']}" if x > 0 else f"color:{theme.tokens()['LOSS']}" if x < 0 else f"color:{theme.tokens()['INFO']}"
 
 
 def _side_css(v) -> str:
-    return f"color:{theme.PROFIT}" if v == "long" else f"color:{theme.LOSS}" if v == "short" else ""
+    t = theme.tokens()
+    return f"color:{t['PROFIT']}" if v == "long" else f"color:{t['LOSS']}" if v == "short" else ""
 
 
 def trade_styler(df: pd.DataFrame):
@@ -288,5 +292,5 @@ def pnl_styler(df: pd.DataFrame, cols, fmt: str = "{:+,.2f}"):
 
 
 def chart(fig, key: str) -> None:
-    """Plotly 차트 — `charts` 레이아웃의 표면·토큰 색을 그대로 쓴다."""
-    st.plotly_chart(fig, theme=None, width="stretch", key=key)
+    """Plotly 차트 — Streamlit 테마가 글자·격자를 라이트·다크에 맞추고, 선·막대 색은 `charts` 토큰을 그대로 쓴다."""
+    st.plotly_chart(fig, theme="streamlit", width="stretch", key=key)

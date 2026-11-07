@@ -20,13 +20,14 @@ def test_equity_fig():
     f = charts.equity_fig(eq)
     assert [t.name for t in f.data][:2] == ["default", "bybit"]  # 자본 선 먼저
     assert list(f.data[0].y) == [1.0, 1.1, 1.2]
-    assert f.data[0].line.color == theme.LINE_COLORS["default"]
+    assert f.data[0].line.color == theme.tokens()["LINE_COLORS"]["default"]  # Plotly 는 hex
     dd = f.data[2:]  # 낙폭 — 두 번째 행, 범례 숨김, ≤ 0
     assert [t.yaxis for t in dd] == ["y2", "y2"] and all(t.showlegend is False for t in dd)
     assert max(max(t.y) for t in dd) <= 0
     assert len(f.layout.xaxis.rangeselector.buttons) == 5  # 1m·3m·6m·1y·all
     assert {s.y0 for s in f.layout.shapes} == {1.0}  # 기준선만(낙폭 0 이면 최대 낙폭 선 없음)
-    assert f.layout.xaxis.gridcolor == theme.BORDER and f.layout.yaxis2.tickformat == ".0%"  # 축 토큰이 병합에서 살아남음
+    assert f.layout.yaxis2.tickformat == ".0%" and f.layout.xaxis.zeroline is False  # 축 설정이 병합에서 살아남음
+    assert f.layout.paper_bgcolor == f.layout.plot_bgcolor == "rgba(0,0,0,0)" and f.layout.template.layout.paper_bgcolor is None  # 배경은 카드, 글자·격자는 Streamlit 테마
 
 
 def test_equity_fig_marks_max_drawdown():
@@ -58,7 +59,7 @@ def test_scatter_splits_pass():
                          "mdd": [0.1, 0.05, 0.4], "gate": ["pass", "insufficient", "fail"]})
     f = charts.scatter_fig(runs, {"min_sharpe": 1.0, "max_drawdown": 0.3})
     other, passed = f.data
-    assert list(passed.y) == [1.5] and passed.marker.color == theme.SUCCESS
+    assert list(passed.y) == [1.5] and passed.marker.color == theme.tokens()["SUCCESS"]
     assert len(other.y) == 2
     assert {s.type for s in f.layout.shapes} == {"line"} and len(f.layout.shapes) == 2
 

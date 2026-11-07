@@ -1,5 +1,5 @@
-# AgentTrading 콘솔 — 로컬 전용(127.0.0.1). 테마 값은 src/ui/theme.py 토큰 v2 와 같아야 한다(tests/test_ui_theme.py).
-# 근거: Obsidian design/ui-ux-v2-benchmark.md (오픈소스 트레이딩 UI 벤치마크 — 다크 기본, 손익 색 FreqUI, 중립 zinc)
+# AgentTrading 콘솔 — 로컬 전용(127.0.0.1). 테마 값은 src/ui/theme.py 토큰 v3 와 같아야 한다(tests/test_ui_theme.py).
+# 근거: Obsidian design/theme-tokens-v3-light-dark.md — 라이트·다크 두 벌, base 없음 = 앱 메뉴에서 라이트·다크·시스템(OS 설정) 선택
 [server]
 address = "127.0.0.1"
 port = 8501
@@ -10,10 +10,15 @@ gatherUsageStats = false
 serverAddress = "127.0.0.1"
 
 [client]
-toolbarMode = "minimal"
+toolbarMode = "viewer"  # 설정 메뉴(라이트·다크·시스템 선택)만, 개발자 옵션 숨김
 
 [theme]
-base = "dark"
+baseRadius = "0.375rem"
+showSidebarBorder = true
+font = "sans-serif"
+codeFont = "monospace"
+
+[theme.dark]
 primaryColor = "#3b82f6"
 backgroundColor = "#09090b"
 secondaryBackgroundColor = "#18181b"
@@ -21,10 +26,6 @@ textColor = "#f4f4f5"
 linkColor = "#3b82f6"
 borderColor = "#27272a"
 dataframeBorderColor = "#27272a"
-baseRadius = "0.375rem"
-showSidebarBorder = true
-font = "sans-serif"
-codeFont = "monospace"
 redColor = "#ef5350"
 greenColor = "#12bb7b"
 orangeColor = "#f59e0b"
@@ -32,7 +33,27 @@ blueColor = "#3b82f6"
 grayColor = "#71717a"
 chartCategoricalColors = ["#38bdf8", "#a78bfa", "#f472b6", "#2dd4bf"]
 
-[theme.sidebar]
+[theme.dark.sidebar]
 backgroundColor = "#18181b"
 textColor = "#a1a1aa"
 primaryColor = "#3b82f6"
+
+[theme.light]
+primaryColor = "#2563eb"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f4f5"
+textColor = "#09090b"
+linkColor = "#2563eb"
+borderColor = "#e4e4e7"
+dataframeBorderColor = "#e4e4e7"
+redColor = "#b91c1c"
+greenColor = "#047857"
+orangeColor = "#b45309"
+blueColor = "#2563eb"
+grayColor = "#71717a"
+chartCategoricalColors = ["#0284c7", "#7c3aed", "#db2777", "#0d9488"]
+
+[theme.light.sidebar]
+backgroundColor = "#f4f4f5"
+textColor = "#52525b"
+primaryColor = "#2563eb"

@@ -7,7 +7,7 @@ import html
 from src.agent.strategies import STATUSES, STEPS, Strategy
 from src.ui import theme
 
-STATE_STYLE = {  # 상태 → (표시, 배경, 글자) — 다크 토큰 v2
+STATE_STYLE = {  # 상태 → (표시, 배경, 글자) — 토큰 v3(CSS 변수, 라이트·다크 자동)
     "done": ("완료", theme.PROFIT, "#fff"),
     "fail": ("미달", theme.LOSS, "#fff"),
     "running": ("진행 중", theme.PRIMARY, "#fff"),

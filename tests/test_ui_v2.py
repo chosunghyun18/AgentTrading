@@ -70,8 +70,9 @@ def test_trade_styler_keeps_columns_and_values():
     assert list(sty.data.columns) == list(common.trade_table(df).columns) and "extra" not in sty.data.columns
     assert sty.data["net"].tolist()[0] == 0.05 and pd.isna(sty.data["net"].tolist()[1])
     html = sty.to_html()
-    assert "+5.00%" in html and "▲ 롱" in html and "▼ 숏" in html and theme.PROFIT in html and theme.LOSS in html
-    assert common.pnl_css(-1) == f"color:{theme.LOSS}" and common.pnl_css(0) == f"color:{theme.INFO}" and common.pnl_css("x") == ""
+    assert "+5.00%" in html and "▲ 롱" in html and "▼ 숏" in html and theme.tokens()["PROFIT"] in html and theme.tokens()["LOSS"] in html
+    t = theme.tokens()  # st.dataframe 은 CSS 변수를 못 읽어 hex
+    assert common.pnl_css(-1) == f"color:{t['LOSS']}" and common.pnl_css(0) == f"color:{t['INFO']}" and common.pnl_css("x") == ""
     pnl = common.pnl_styler(pd.DataFrame({"closedPnl": [1.5, -2.0], "other": ["a", "b"]}), ["closedPnl", "missing"]).to_html()
     assert "+1.50" in pnl and "-2.00" in pnl
 
