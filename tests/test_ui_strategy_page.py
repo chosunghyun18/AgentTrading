@@ -58,3 +58,55 @@ def test_pipeline_html_states():
     assert "미달" in h and "완료" in h
     assert "phase3-next" not in h  # 문서 경로가 아니라 사유만
     assert 'title="Sharpe·DSR 미달"' in h
+
+
+def test_pipeline_links_to_gate_page():
+    h = sv.pipeline_html(sg.REGISTRY)
+    assert h.count('target="_self"') == len(sg.STEPS) * (len(sg.REGISTRY) + 1)  # 머리글 + 칸 전부
+    assert 'href="gates?gate=wf"' in h and 'href="gates?gate=oos&amp;strategy=v1"' in h
+
+
+def test_gates_cover_every_step():
+    assert set(sv.GATES) == set(sg.STEPS) and set(sg.STEP_KEYS) == set(sg.STEPS)
+    assert len(set(sg.STEP_KEYS.values())) == len(sg.STEPS)
+    assert all(g.what and g.criteria and g.docs for g in sv.GATES.values())
+    assert all(isinstance(g.criteria, tuple) and isinstance(g.docs, tuple) for g in sv.GATES.values())
+    assert sv.gate_by_key("paper") == "페이퍼 8주" and sv.gate_by_key("nope") == sv.gate_by_key(None) == "설계"
+
+
+GATES_PAGE = PAGE.parent / "gates.py"
+
+
+@pytest.mark.parametrize("key", ["wf", "live", "bogus"])
+def test_gates_page_opens_requested_gate(env, key):
+    at = AppTest.from_file(str(GATES_PAGE), default_timeout=30)
+    at.query_params["gate"] = key
+    at.query_params["strategy"] = "C1"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    step = sv.gate_by_key(key)
+    md = _md(at)
+    assert any(h.value.endswith(step) for h in at.subheader)
+    assert sv.GATES[step].criteria[0] in md
+    assert md.count('class="pipe-row') == len(sg.REGISTRY) and md.count("pipe-row gate-row-hit") == 1
+    assert len(at.button) == 0  # 읽기 전용
+
+
+def test_gates_page_switch_updates_url(env):
+    at = AppTest.from_file(str(GATES_PAGE), default_timeout=30).run()
+    at.button_group(key="gate-pick").set_value("OOS 1회").run()
+    assert not at.exception
+    assert at.query_params["gate"] in ("oos", ["oos"])
+    assert any(h.value.endswith("OOS 1회") for h in at.subheader)
+
+
+def test_gates_page_switch_clears_highlight_and_deselect_keeps_gate(env):
+    at = AppTest.from_file(str(GATES_PAGE), default_timeout=30)
+    at.query_params["gate"] = "wf"
+    at.query_params["strategy"] = "C1"
+    at.run()
+    at.button_group(key="gate-pick").set_value("OOS 1회").run()
+    assert "strategy" not in at.query_params and _md(at).count("pipe-row gate-row-hit") == 0
+    at.button_group(key="gate-pick").set_value(None).run()  # 같은 항목 다시 누름 = 선택 해제
+    assert not at.exception
+    assert at.button_group(key="gate-pick").value == "OOS 1회"

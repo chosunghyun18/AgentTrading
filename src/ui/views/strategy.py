@@ -37,7 +37,7 @@ with common.card("agent-now"):
 with common.card("pipeline"):
     st.subheader("관문 진행")
     st.markdown(sv.pipeline_html(reg), unsafe_allow_html=True)
-    st.caption("칸에 마우스를 올리면 사유가 보인다. 관문 기준: Spec 3절(거래 ≥100 · Sharpe ≥1.0 · MDD ≤30% · DSR ≥0.95), "
+    st.caption("칸에 마우스를 올리면 사유가 보이고, 관문 이름이나 칸을 누르면 그 관문의 설명으로 간다. 관문 기준: Spec 3절(거래 ≥100 · Sharpe ≥1.0 · MDD ≤30% · DSR ≥0.95), "
                "3.1절(페이퍼 8주).")
 
 for s in reg:

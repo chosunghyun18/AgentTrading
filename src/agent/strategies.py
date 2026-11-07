@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 STEPS = ("설계", "근거 데이터 검증", "구현", "워크포워드", "OOS 1회", "페이퍼 8주", "실거래")
+STEP_KEYS = dict(zip(STEPS, ("design", "evidence", "impl", "wf", "oos", "paper", "live")))  # 관문 → URL 키(`gates?gate=`)
 STEP_STATES = ("done", "fail", "pending", "running", "na")  # 완료·미달·대기·진행 중·해당 없음
 STATUSES = {  # status → (화면 라벨, 색 이름)
     "active": ("운용 중", "success"),
@@ -40,7 +41,7 @@ class Strategy:
 
 
 def _steps(**kw) -> dict[str, str]:
-    keys = dict(zip(("design", "evidence", "impl", "wf", "oos", "paper", "live"), STEPS))
+    keys = {k: step for step, k in STEP_KEYS.items()}
     return {keys[k]: v for k, v in kw.items()}
 
 
