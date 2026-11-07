@@ -2,7 +2,7 @@
 
   strategy list | strategy check <id>
   agent add <yaml> | agent list
-  backtest <agent> --start YYYY-MM-DD --end YYYY-MM-DD [--fee-profile default]   # 기본 표본만(OOS 거부)
+  backtest <agent> --start YYYY-MM-DD --end YYYY-MM-DD [--fee-profile default]   # 기본 표본만(OOS 거부), 시세 = AT_MARKET_SOURCE
   run <agent> [--max-bars N] [--equity 1000] [--abandon-stale]                  # shadow·paper (live 없음)
   stop <agent> | status
 """
@@ -73,7 +73,7 @@ def backtest(con, agent_id: str, bars: pd.DataFrame, start, end, fee_profile: st
 
 
 def cmd_backtest(con, a) -> int:
-    from src.ingest.store import load_bars  # 지연 import — 데이터 폴더가 없어도 다른 명령은 동작
+    from src.marketdata import load_bars  # 지연 import — AT_MARKET_SOURCE(parquet·db) 에 따라 읽는다
     start, end = check_sample_range(a.start, a.end)
     bars = load_bars(start.date(), (end - timedelta(days=1)).date(), shared_settings.get("AT_SYMBOL"))
     run_id, summary = backtest(con, a.agent, bars, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"),

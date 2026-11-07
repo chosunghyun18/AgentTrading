@@ -13,6 +13,13 @@ services:
       AT_AUTH_REQUIRED: "${AT_AUTH_REQUIRED:-1}"
       AT_AUTH_ALLOWED_EMAILS: "${AT_AUTH_ALLOWED_EMAILS:-}"
       AT_AUTH_EXTERNAL: "${AT_AUTH_EXTERNAL:-0}"
+      # 시세 DB(DEPLOY.md 6절). 값은 셸 환경 또는 이 폴더 .env 에서 보간된다 — 이 세 값만 넘어가고 거래소 키는 넘어가지 않는다.
+      # host 의 MySQL 은 컨테이너 안에서 127.0.0.1 이 아니라 host.docker.internal 로 접속한다.
+      AT_ENV: "${AT_ENV:-local}"
+      AT_MARKET_SOURCE: "${AT_MARKET_SOURCE:-parquet}"
+      AT_MARKET_DB_URL: "${AT_MARKET_DB_URL:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux 서버에서도 host.docker.internal 이 풀리게
     volumes:
       - data:/app/data                    # 산출물·에이전트 상태·한도(risk.yaml) — named volume(SQLite WAL 대비)
       - ./.streamlit:/app/.streamlit:ro   # config.toml(테마) + secrets.toml([auth], 운영자가 만든 경우; uid 10001 이 읽을 수 있어야 한다)

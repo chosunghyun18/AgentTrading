@@ -20,10 +20,10 @@ import pandas as pd
 import pyarrow.parquet as pq
 import yaml
 
+from src import marketdata
 from src.backtest.diagnose import diagnose_path
 from src.backtest.export_equity import export_paths
 from src.backtest.walkforward import OOS_START, SAMPLE_START, check_sample_range
-from src.ingest import store
 
 PROFILES = ("default", "bybit")
 SPAN_RE = re.compile(r"^(\d{8})_(\d{8})$")
@@ -201,12 +201,12 @@ def load_roundtrips(out_dir: Path, profile: str, span: str, strategy_id: str, pa
 # 1분봉 --------------------------------------------------------------------------------------------------
 
 def load_bars_guarded(data_dir: Path, symbol: str, start, end_exclusive) -> pd.DataFrame:
-    """UI 의 유일한 1분봉 로더. 반열린 `[start, end_exclusive)`(UTC 자정) 표본 가드 → `store.load_bars(끝 포함)`.
+    """UI 의 유일한 1분봉 로더. 반열린 `[start, end_exclusive)`(UTC 자정) 표본 가드 → `marketdata.load_bars(끝 포함)`.
 
     표본 밖(OOS 포함)은 데이터를 읽기 전에 `ValueError`, 결측 일은 `store.MissingDaysError`.
     """
     s, e = check_sample_range(start, end_exclusive)
-    return store.load_bars(s.date(), (e - _DAY).date(), symbol, out_dir=Path(data_dir))
+    return marketdata.load_bars(s.date(), (e - _DAY).date(), symbol, out_dir=Path(data_dir))
 
 
 def bars_window(entry_ts, exit_ts, pad_hours: float) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -231,9 +231,13 @@ def load_trade_bars(data_dir: Path, symbol: str, entry_ts, exit_ts, pad_hours: f
 # 데이터 커버리지 ----------------------------------------------------------------------------------------
 
 def coverage(data_dir: Path, symbol: str = "XBTUSD") -> dict:
-    """정규화 manifest 기준 일 수·첫날·끝날, 기본 표본 결측 일 수. manifest 없으면 n_days 0."""
+    """정규화 manifest(db 모드면 시세 DB) 기준 일 수·첫날·끝날, 기본 표본 결측 일 수. 없으면 n_days 0."""
+    db_days = marketdata.covered_days(symbol)
     p = Path(data_dir) / "_manifest" / f"{symbol}.json"
-    days = sorted(json.loads(p.read_text(encoding="utf-8"))) if p.is_file() else []
+    if db_days is not None:
+        days = [d.strftime("%Y%m%d") for d in db_days]
+    else:
+        days = sorted(json.loads(p.read_text(encoding="utf-8"))) if p.is_file() else []
     out = {"symbol": symbol, "n_days": len(days), "first": None, "last": None}
     if days:
         out["first"], out["last"] = (date(int(d[:4]), int(d[4:6]), int(d[6:])) for d in (days[0], days[-1]))

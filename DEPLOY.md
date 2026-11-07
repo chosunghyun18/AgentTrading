@@ -70,6 +70,9 @@ curl -fsS http://127.0.0.1:8501/_stcore/health   # ok
 | `AT_TRADE_SYMBOL` | `BTCUSDT` | 실행 심볼(Bybit linear) — **환경변수만** |
 | `AT_AGENT_DIR` / `AT_RISK_FILE` | `data/agent` / `config/risk.yaml` | 에이전트 상태·감사 로그 · 계정 리스크 한도 — **환경변수만**(이미지 기본값은 `/app/data/...`) |
 | `AT_STORE_PATH` | `data/agent/platform.sqlite` | 플랫폼 저장소(SQLite, WAL) — 에이전트·run·자본곡선·이벤트·정지 명령. `data/agent/` 와 같이 git 제외 |
+| `AT_ENV` | `local` | 배포 환경 `local`·`dev`·`prod`. dev·prod 는 `AT_MARKET_SOURCE=db` 필수 + DB 이름이 `_dev`·`_prod` 로 끝나야 기동(6절). local 은 `_prod` DB 거부 |
+| `AT_MARKET_SOURCE` | `parquet` | 시세(1분봉) 소스 `parquet`·`db` — `at backtest`·화면 1분봉·커버리지 카드. **판정 경로(`backtest/run.py`·`run_c1.py`)는 늘 parquet** |
+| `AT_MARKET_DB_URL` | (빈값) | 시세 DB SQLAlchemy URL `mysql+pymysql://USER:PASS@HOST:3306/DB`. 비밀번호가 들어가므로 `.env` 에만 두고 로그에는 DB 이름만 찍는다 |
 | `AT_LIVE_ENABLED` | `0` | LIVE 잠금 해제 — 정확히 `1` 일 때만, **환경변수만** |
 | `BYBIT_*` | — | 거래소 키(`.env.example`). ui 컨테이너에는 주지 않는다 |
 
@@ -83,3 +86,25 @@ uv run python -m src.ui.serve --address 0.0.0.0 # 인증 설정 없이 외부 bi
 ```
 
 CI(`.github/workflows/ci.yml`)가 push 마다 같은 잠금으로 ubuntu(배포 대상)·macOS(판정 산출물 바이트 골든 포함) 두 환경의 pytest 와 비밀키 스캔(gitleaks)을 돌린다.
+
+## 6. 시세 DB (운영·개발 분리)
+
+설계: Obsidian `Projects/work/AgentTrading/task/market-db-source.md`. 서버에는 32GB parquet 폴더가 없으므로 `at backtest`·화면 1분봉은 시세 DB 에서 읽는다.
+
+| 환경 | `AT_ENV` | DB 이름 예 | 비고 |
+|---|---|---|---|
+| 로컬 PC | `local` | `market` (Homebrew MySQL 8.4, MiroFishTrader 와 공용) | `AT_MARKET_SOURCE=parquet` 도 가능 |
+| 개발 서버 | `dev` | `market_dev` | 이름이 `_dev` 로 끝나지 않으면 기동 거부 |
+| 운영 서버 | `prod` | `market_prod` | 이름이 `_prod` 로 끝나지 않으면 기동 거부 |
+
+1. DB·계정 — 앱 계정에는 `bars_1m` 쓰기와 읽기만 준다.
+   ```sql
+   CREATE DATABASE market_dev CHARACTER SET utf8mb4;
+   CREATE USER 'at'@'%' IDENTIFIED BY '<무작위>';
+   GRANT SELECT ON market_dev.* TO 'at'@'%';
+   GRANT SELECT, INSERT, DELETE, CREATE, INDEX ON market_dev.bars_1m TO 'at'@'%';
+   ```
+2. `.env`: `AT_ENV=dev`, `AT_MARKET_SOURCE=db`, `AT_MARKET_DB_URL=mysql+pymysql://at:<비번>@<호스트>:3306/market_dev`. 같은 호스트의 MySQL 을 컨테이너에서 쓰면 호스트는 `host.docker.internal`.
+3. 적재(parquet 이 있는 곳에서 한 번): `python -m src.marketdata.sync` — 기본 표본 2018-03-01~2021-12-31 만, 월마다 다시 읽어 parquet 과 완전 일치 검증. OOS(2022~) 구간은 거부한다.
+4. 의존성: `uv sync --extra db`(이미지에는 포함). 플랫폼 상태 저장소는 여전히 SQLite(`AT_STORE_PATH`, named volume) — 환경별로 볼륨이 따로라 섞이지 않는다.
+

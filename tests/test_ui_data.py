@@ -173,7 +173,7 @@ def test_bars_single_entry_point():
     hits = [(p.name, line.strip()) for p in ui.rglob("*.py") for line in p.read_text(encoding="utf-8").splitlines()
             if not line.strip().startswith(('"""', "#", "`"))
             and any(k in line for k in ("load_bars(", "load_trades(", "bars_1m"))]
-    assert hits == [("data.py", "return store.load_bars(s.date(), (e - _DAY).date(), symbol, out_dir=Path(data_dir))")]
+    assert hits == [("data.py", "return marketdata.load_bars(s.date(), (e - _DAY).date(), symbol, out_dir=Path(data_dir))")]
 
 
 # 진단(B) — 손으로 만든 소형 진단 프레임 ---------------------------------------------------------------------

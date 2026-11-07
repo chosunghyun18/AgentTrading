@@ -16,6 +16,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 
@@ -23,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT / ".env"
 
 MODES = ("backtest", "shadow", "paper", "live")
+ENVS = ("local", "dev", "prod")
+MARKET_SOURCES = ("parquet", "db")
 MODE_ALIASES = {"demo": "paper"}  # 기존 state.json·감사 로그·콘솔 코드의 "demo"(Bybit demo trading) = paper
 LOOPBACK_NAMES = frozenset({"localhost"})
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -43,6 +46,9 @@ VARS: dict[str, tuple[str, str]] = {
     "AT_PORT": ("8501", "관리 화면 포트(런처 bind 포트. compose 에서는 host 쪽 공개 포트)"),
     "AT_AUTH_REQUIRED": ("0", "1 이면 OIDC 로그인(`st.login`) + 허용 이메일 필수"),
     "AT_AUTH_ALLOWED_EMAILS": ("", "허용 이메일(쉼표 구분, 대소문자 무시). 비어 있으면 아무도 들어오지 못한다"),
+    "AT_ENV": ("local", "배포 환경 local·dev·prod. dev·prod 는 시세 DB 필수 + DB 이름에 `_dev`·`_prod` 꼬리표 필수"),
+    "AT_MARKET_SOURCE": ("parquet", "시세(1분봉·펀딩) 읽기 소스 parquet·db — 판정 경로(`backtest/run.py`·`run_c1.py`)는 늘 parquet"),
+    "AT_MARKET_DB_URL": ("", "시세 DB SQLAlchemy URL(예 mysql+pymysql://at:***@127.0.0.1:3306/market). 비밀번호 포함 → .env 에만"),
     "AT_AUTH_EXTERNAL": ("0", "1 이면 앞단(리버스 프록시 인증·SSH 터널)이 접근을 막는다고 운영자가 선언 — 외부 bind 허용"
                                "(AT_AUTH_REQUIRED=1 이 함께 켜져 있으면 REQUIRED 가 우선)"),
 }
@@ -96,6 +102,45 @@ def normalize_mode(mode: str) -> str:
     if m not in MODES:
         raise ValueError(f"모드는 {MODES} 중 하나(별칭 {tuple(MODE_ALIASES)}): {mode!r}")
     return m
+
+
+@dataclass(frozen=True)
+class MarketSource:
+    env: str
+    kind: str   # parquet | db
+    url: str    # kind=db 일 때만
+
+    def __repr__(self) -> str:  # URL 의 비밀번호가 로그·예외에 찍히지 않게
+        return f"MarketSource(env={self.env!r}, kind={self.kind!r}, db={db_name(self.url)!r})"
+
+
+def db_name(url: str) -> str:
+    """URL 의 DB 이름(경로 마지막 조각, 쿼리 제외). 비밀번호는 보지 않는다."""
+    return urlsplit(url).path.rsplit("/", 1)[-1] if url else ""
+
+
+def market_source() -> MarketSource:
+    """시세 소스 결정 + 환경 안전 규칙. 위반이면 ValueError(조용한 폴백 없음).
+
+    - dev·prod 는 `db` 필수 — 서버에는 parquet 폴더가 없다.
+    - dev·prod 의 DB 이름은 자기 꼬리표(`_dev`·`_prod`)로 끝나야 한다 — 개발 서버가 운영 DB 를 가리키는 실수 차단.
+    - local 은 `_prod` DB 를 가리킬 수 없다.
+    """
+    env, kind, url = get("AT_ENV").lower(), get("AT_MARKET_SOURCE").lower(), get("AT_MARKET_DB_URL")
+    if env not in ENVS:
+        raise ValueError(f"AT_ENV 는 {ENVS} 중 하나: {env!r}")
+    if kind not in MARKET_SOURCES:
+        raise ValueError(f"AT_MARKET_SOURCE 는 {MARKET_SOURCES} 중 하나: {kind!r}")
+    if kind == "db" and not url:
+        raise ValueError("AT_MARKET_SOURCE=db 인데 AT_MARKET_DB_URL 이 비어 있다")
+    if env == "local" and db_name(url).endswith("_prod"):
+        raise ValueError(f"AT_ENV=local 이 운영 DB 를 가리킨다: {db_name(url)!r}")
+    if env != "local":
+        if kind != "db":
+            raise ValueError(f"AT_ENV={env} 는 AT_MARKET_SOURCE=db 여야 한다(서버에는 parquet 폴더가 없다)")
+        if not db_name(url).endswith(f"_{env}"):
+            raise ValueError(f"AT_ENV={env} 의 시세 DB 이름은 '_{env}' 로 끝나야 한다: {db_name(url)!r}")
+    return MarketSource(env, kind, url if kind == "db" else "")
 
 
 def allowed_emails() -> frozenset[str]:

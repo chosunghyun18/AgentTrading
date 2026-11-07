@@ -36,7 +36,7 @@ jobs:
           version: "0.11.26"
           enable-cache: true
       - run: uv python install 3.12
-      - run: uv sync --locked --extra auth --group dev   # --locked: pyproject 와 uv.lock 이 어긋나면 실패(드리프트 검출)
+      - run: uv sync --locked --extra auth --extra db --group dev   # --locked: pyproject 와 uv.lock 이 어긋나면 실패(드리프트 검출)
       - run: uv run --locked pytest -q ${{ matrix.pytest_args }}
 
   secrets-scan:

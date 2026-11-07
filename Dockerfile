@@ -7,7 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --extra auth
+RUN uv sync --locked --no-dev --extra auth --extra db
 
 # ---- 2단계: 실행 이미지(non-root, uv 없음) ----
 FROM python:3.12-slim-bookworm
