@@ -63,6 +63,7 @@ def test_default_is_parquet_local():
     ("local", "db", "mysql+pymysql://u:p@h/market_prod", "운영 DB"),
 ])
 def test_market_source_rules(monkeypatch, env, source, url, msg):
+    monkeypatch.setattr(settings, "_dotenv", lambda: {})  # 빈 환경변수는 .env 로 넘어가므로 로컬 .env 의 URL 과 격리
     _set(monkeypatch, AT_ENV=env, AT_MARKET_SOURCE=source, AT_MARKET_DB_URL=url)
     with pytest.raises(ValueError, match=msg):
         settings.market_source()
@@ -174,3 +175,12 @@ def test_mysql_roundtrip():
         pd.testing.assert_frame_equal(db.load_bars(e, date(2019, 6, 1), date(2019, 6, 1), sym), src, check_exact=True)
     finally:
         db.replace_bars(e, src.iloc[:0], date(2019, 6, 1), date(2019, 6, 1), sym)
+
+
+def test_mysql_double_returns_float_not_decimal():
+    """MySQL DOUBLE 기본(asdecimal=True)은 소수 10자리 Decimal 로 반올림해 1 ulp 가 어긋난다(2026-11-08 실측)."""
+    from sqlalchemy.dialects import mysql
+    for col in db.bars_1m.columns:
+        impl = col.type.dialect_impl(mysql.dialect())
+        if hasattr(impl, "asdecimal"):
+            assert impl.asdecimal is False, col.name

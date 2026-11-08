@@ -25,7 +25,8 @@ from src.shared.schema import BARS_1M, empty_frame, validate
 log = logging.getLogger(__name__)
 metadata = MetaData()
 _TS = DateTime().with_variant(MYSQL_DATETIME(fsp=6), "mysql")
-_F = Float(precision=53).with_variant(MYSQL_DOUBLE(), "mysql")
+# asdecimal=False 필수 — MySQL DOUBLE 기본은 Decimal(소수 10자리 반올림)로 돌려줘 1 ulp 가 어긋난다
+_F = Float(precision=53).with_variant(MYSQL_DOUBLE(asdecimal=False), "mysql")
 
 bars_1m = Table(
     "bars_1m", metadata,
