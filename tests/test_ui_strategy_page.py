@@ -69,8 +69,10 @@ def test_pipeline_links_to_gate_page():
 def test_gates_cover_every_step():
     assert set(sv.GATES) == set(sg.STEPS) and set(sg.STEP_KEYS) == set(sg.STEPS)
     assert len(set(sg.STEP_KEYS.values())) == len(sg.STEPS)
-    assert all(g.what and g.criteria and g.docs for g in sv.GATES.values())
-    assert all(isinstance(g.criteria, tuple) and isinstance(g.docs, tuple) for g in sv.GATES.values())
+    for g in sv.GATES.values():
+        assert g.alias and g.plain and g.criteria and g.exact and g.terms and g.docs
+        assert all(isinstance(t, tuple) for t in (g.criteria, g.exact, g.terms, g.docs))
+        assert set(g.terms) <= set(sv.TERMS)  # 용어 풀이가 빠진 용어 없음
     assert sv.gate_by_key("paper") == "페이퍼 8주" and sv.gate_by_key("nope") == sv.gate_by_key(None) == "설계"
 
 
@@ -86,9 +88,10 @@ def test_gates_page_opens_requested_gate(env, key):
     assert not at.exception, [e.value for e in at.exception]
     step = sv.gate_by_key(key)
     md = _md(at)
-    assert any(h.value.endswith(step) for h in at.subheader)
+    assert any(h.value.endswith(f"{step} — {sv.GATES[step].alias}") for h in at.subheader)
     assert sv.GATES[step].criteria[0] in md
     assert md.count('class="pipe-row') == len(sg.REGISTRY) and md.count("pipe-row gate-row-hit") == 1
+    assert sv.GATES[step].plain in md and md.count('class="term-row"') == len(sv.GATES[step].terms)
     assert len(at.button) == 0  # 읽기 전용
 
 
@@ -97,7 +100,7 @@ def test_gates_page_switch_updates_url(env):
     at.button_group(key="gate-pick").set_value("OOS 1회").run()
     assert not at.exception
     assert at.query_params["gate"] in ("oos", ["oos"])
-    assert any(h.value.endswith("OOS 1회") for h in at.subheader)
+    assert any(h.value.endswith(sv.GATES["OOS 1회"].alias) for h in at.subheader)
 
 
 def test_gates_page_switch_clears_highlight_and_deselect_keeps_gate(env):
