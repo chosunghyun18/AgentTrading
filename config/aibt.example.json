@@ -1,0 +1,43 @@
+{
+  "_설명": "복사해서 config/aibt.json 으로 쓴다(커밋 금지 — .gitignore). 화면 '백테스트 › AI 백테스트' 가 읽는다. 쓸 수 있는 최상위 키는 defaults · preferences · presets 뿐이고, 이 _설명 키는 지운다.",
+
+  "defaults": {
+    "initial_cash": 10000,
+    "monthly_contribution": 0,
+    "benchmark": "QQQ"
+  },
+
+  "preferences": "투자 기간은 10년 이상이고 공격형이다. 하락장에 담는 쪽을 좋아한다. 비교 대상은 특별한 말이 없으면 기초 1배 지수로 한다.",
+
+  "presets": {
+    "하락 트리거": {
+      "rule": "drawdown_trigger",
+      "weights": [{ "symbol": "QLD", "weight": 1.0 }],
+      "ref_symbol": "QQQ",
+      "vehicle": "TQQQ",
+      "reserve_fraction": 0.3,
+      "check": "eom",
+      "reset_years": 0,
+      "stages": [
+        { "drawdown_pct": 7, "cumulative_fraction": 0.25 },
+        { "drawdown_pct": 30, "cumulative_fraction": 0.6 },
+        { "drawdown_pct": 45, "cumulative_fraction": 1.0 }
+      ],
+      "start": "2010-01-01"
+    },
+
+    "200일선": {
+      "rule": "ma_filter",
+      "signal_symbol": "QQQ",
+      "ma_window": 200,
+      "hold_symbol": "TQQQ",
+      "else_symbol": "",
+      "start": "2012-01-01"
+    },
+
+    "단순 보유": {
+      "rule": "buy_and_hold",
+      "weights": [{ "symbol": "QQQ", "weight": 1.0 }]
+    }
+  }
+}

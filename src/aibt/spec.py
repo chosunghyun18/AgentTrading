@@ -75,6 +75,15 @@ SCHEMA: dict = {
 }
 
 
+# 모든 키를 가진 중립 명세. 부분 프리셋을 이 위에 덮어 완전한 명세를 만든다(`SCHEMA` 와 키가 같아야 한다 — 테스트로 확인).
+TEMPLATE: dict = {
+    "title": "", "start": "", "end": "", "initial_cash": DEFAULT_CASH, "monthly_contribution": 0.0, "benchmark": "",
+    "rule": "buy_and_hold", "weights": [], "signal_symbol": "", "ma_window": 0, "hold_symbol": "", "else_symbol": "",
+    "ref_symbol": "", "stages": [], "vehicle": "", "check": "daily", "reset_years": 0, "reserve_fraction": 0.0,
+    "rebalance_period": "monthly",
+}
+
+
 class SpecError(ValueError):
     def __init__(self, errors: list[str]):
         self.errors = list(errors)

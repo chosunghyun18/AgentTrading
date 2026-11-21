@@ -50,7 +50,8 @@ SYSTEM = """당신은 ETF 백테스트 **명세 번역기**다. 사용자의 요
 채우기 규칙:
 - 모든 키를 반드시 낸다. 그 규칙에서 안 쓰는 키는 "" · 0 · [] · "daily" · "monthly" 로 둔다.
 - weights 는 [{"symbol": "QQQ", "weight": 0.6}, ...] 형식이고 weight 합은 1. 언급 없으면 균등.
-- initial_cash 언급 없으면 10000. monthly_contribution 없으면 0(dca 는 반드시 > 0). 통화 단위는 신경 쓰지 않는다.
+- 금액·벤치마크는 **사용자 세팅의 기본값이 주어지면 그 값을 쓴다**. 세팅에도 없고 사용자도 말하지 않을 때만 initial_cash 10000,
+  monthly_contribution 0 을 쓴다(dca 는 반드시 > 0). 사용자가 직접 말한 값이 세팅보다 우선한다. 통화 단위는 신경 쓰지 않는다.
 - start·end 는 YYYY-MM-DD. "2015년부터" → "2015-01-01". 언급 없으면 "". 데이터 범위 밖이면 그대로 두어도 된다(엔진이 자른다).
 - 종목은 카탈로그에 있는 코드만 쓴다. 카탈로그: QQQ 나스닥100 1배, QLD 2배, TQQQ 3배, XLK S&P 기술섹터 1배, TECL 기술섹터 3배.
   "나스닥 3배" = TQQQ, "기술주 3배" = TECL. 카탈로그에 없는 종목을 요구하면 가장 가까운 것으로 바꾸고 title 에 적는다.
@@ -133,13 +134,17 @@ def catalog_text(catalog: dict) -> str:
     return "사용 가능한 종목과 데이터 범위:\n" + "\n".join(lines)
 
 
-def build_messages(turns: list[dict], catalog: dict) -> list[dict]:
-    """대화 턴(role·content) → API messages. 첫 사용자 턴 앞에 카탈로그를 붙인다(캐시 안정: 시스템은 고정, 카탈로그는 메시지)."""
+def build_messages(turns: list[dict], catalog: dict, user_block: str = "") -> list[dict]:
+    """대화 턴(role·content) → API messages. 첫 사용자 턴 앞에 카탈로그와 사용자 세팅을 붙인다.
+
+    시스템 프롬프트는 고정(캐시), 매번 달라지는 카탈로그·세팅은 메시지에 둔다.
+    """
     out = []
     for k, t in enumerate(turns):
         content = t["content"]
         if k == 0:
-            content = f"{catalog_text(catalog)}\n\n요청: {content}"
+            head = catalog_text(catalog) + (f"\n\n{user_block}" if user_block else "")
+            content = f"{head}\n\n요청: {content}"
         out.append({"role": t["role"], "content": content})
     return out
 
@@ -232,7 +237,7 @@ def _result(raw_text: str, **kw) -> ParseResult:
     return ParseResult(obj, text=raw_text, **kw)
 
 
-def _parse_anthropic(turns: list[dict], catalog: dict, *, client=None, model_id: str) -> ParseResult:
+def _parse_anthropic(turns: list[dict], catalog: dict, *, client=None, model_id: str, user_block: str = "") -> ParseResult:
     try:
         client = client or _anthropic_client()
     except ImportError:
@@ -242,7 +247,7 @@ def _parse_anthropic(turns: list[dict], catalog: dict, *, client=None, model_id:
             model=model_id,
             max_tokens=MAX_TOKENS,
             system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            messages=build_messages(turns, catalog),
+            messages=build_messages(turns, catalog, user_block),
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
             betas=BETAS,
             fallbacks="default",
@@ -267,12 +272,12 @@ def _parse_anthropic(turns: list[dict], catalog: dict, *, client=None, model_id:
     return _result(text, **common)
 
 
-def _parse_openrouter(turns: list[dict], catalog: dict, *, post=None, model_id: str) -> ParseResult:
+def _parse_openrouter(turns: list[dict], catalog: dict, *, post=None, model_id: str, user_block: str = "") -> ParseResult:
     key = free_key()
     if not key:
         return ParseResult(None, error=f"{OPENROUTER_KEY} 가 없다 — openrouter.ai 에서 무료 키를 받아 `.env` 에 넣는다",
                            provider="openrouter_free")
-    messages = [{"role": "system", "content": SYSTEM}, *build_messages(turns, catalog)]
+    messages = [{"role": "system", "content": SYSTEM}, *build_messages(turns, catalog, user_block)]
     try:
         out = openrouter.complete(messages, api_key=key, model=model_id, schema=SCHEMA,
                                   max_tokens=MAX_TOKENS, post=post)
@@ -285,7 +290,7 @@ def _parse_openrouter(turns: list[dict], catalog: dict, *, post=None, model_id: 
 
 
 def parse(turns: list[dict], catalog: dict, *, client=None, post=None, provider: str = "",
-          model_id: str | None = None) -> ParseResult:
+          model_id: str | None = None, user_block: str = "") -> ParseResult:
     """대화 → 명세 dict(검증 전). 오류는 예외 대신 `ParseResult.error` 로(화면이 그대로 보인다).
 
     `client` 를 주면 anthropic, `post` 를 주면 openrouter 경로로 고정한다(테스트 주입).
@@ -303,5 +308,5 @@ def parse(turns: list[dict], catalog: dict, *, client=None, post=None, provider:
             return ParseResult(None, error=str(e))
     model_id = model_id or model(name)
     if name == "openrouter_free":
-        return _parse_openrouter(turns, catalog, post=post, model_id=model_id)
-    return _parse_anthropic(turns, catalog, client=client, model_id=model_id)
+        return _parse_openrouter(turns, catalog, post=post, model_id=model_id, user_block=user_block)
+    return _parse_anthropic(turns, catalog, client=client, model_id=model_id, user_block=user_block)

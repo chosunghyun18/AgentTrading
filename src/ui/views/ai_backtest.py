@@ -1,35 +1,30 @@
-"""AI 백테스트 — 말로 물어보면 명세(JSON)로 바꿔 ETF 일봉 엔진으로 돌리고 단위가치 지수·낙폭을 그린다.
+"""AI 백테스트 — **대화창 하나**로 쓰는 화면. 세팅은 화면이 아니라 JSON 파일(`AT_AIBT_CONFIG`)에 있다.
 
-- AI 는 번역만(`src/aibt/llm.py`), 계산은 `src/aibt/etf.py`. 같은 명세 JSON 은 `st.cache_data` 로 재계산을 생략한다.
-- 쓰기 없음(결과는 세션 상태, 다운로드 버튼으로 반출). 네트워크 호출은 사용자가 보낼 때만. LLM 호출은 세션당 상한.
-- 키·SDK 가 없으면 JSON 직접 입력 경로만 열린다.
-설계: Obsidian `Projects/work/AgentTrading/task/ai-backtest.md`.
+- 말로 설명하면 AI 가 **명세(JSON)로 번역만** 하고, 계산은 `src/aibt/etf.py` 가 결정적으로 한다.
+- 세팅 파일의 프리셋 이름을 그대로 치면 **AI 없이** 바로 돈다(키가 없어도 쓰는 경로).
+- 화면은 세팅 파일을 **읽기만** 한다. 쓰기 없음(파일·DB 둘 다). 네트워크 호출은 사용자가 보낼 때만.
+설계: Obsidian `Projects/work/AgentTrading/task/ai-backtest.md` "다음 방향".
 """
 
 from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from src.aibt import etf, llm
 from src.aibt import spec as spec_mod
+from src.aibt import userconfig as uc
 from src.shared import settings
 from src.ui import charts, common, theme
 
 MAX_LLM_CALLS = 30
-EXAMPLE = {
-    "title": "QQQ −7/−30/−45% 트리거로 TQQQ 매수 (QLD 코어)", "start": "2010-01-01", "end": "", "initial_cash": 10000,
-    "monthly_contribution": 0, "benchmark": "QQQ", "rule": "drawdown_trigger",
-    "weights": [{"symbol": "QLD", "weight": 1.0}], "signal_symbol": "", "ma_window": 0, "hold_symbol": "", "else_symbol": "",
-    "ref_symbol": "QQQ", "stages": [{"drawdown_pct": 7, "cumulative_fraction": 0.25}, {"drawdown_pct": 30, "cumulative_fraction": 0.6},
-                                    {"drawdown_pct": 45, "cumulative_fraction": 1.0}],
-    "vehicle": "TQQQ", "check": "eom", "reset_years": 0, "reserve_fraction": 0.3, "rebalance_period": "monthly",
-}
-PROMPTS = ["QQQ를 2010년부터 그냥 들고 있기, 벤치마크 없이", "매달 100씩 QLD 적립, 2015년부터",
-           "QQQ가 200일선 위면 TQQQ, 아래면 현금", "QQQ 60% TQQQ 40% 매년 리밸런싱, 2012년부터"]
+HELP = ("말로 설명하면 백테스트를 돌린다. 예: **QQQ가 고점 대비 30% 빠지면 TQQQ 산다, 2015년부터** · "
+        "**매달 100씩 QLD 적립** · **QQQ 200일선 위면 TQQQ, 아래면 현금**\n\n"
+        "명세 JSON 을 그대로 붙여 넣어도 바로 돈다(AI 호출 없음).")
 
 common.setup("AI 백테스트")
 
@@ -45,6 +40,12 @@ def _run(spec_json: str, url: str) -> etf.Result:
     return etf.run(sp, etf.load_prices(url, sp.symbols))
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
+def _user_config(path_str: str, mtime: float) -> uc.UserConfig:
+    """mtime 을 캐시 키에 넣어 파일을 고치면 자동 반영한다(`common.py` 의 산출물 캐시와 같은 방식)."""
+    return uc.load(Path(path_str))
+
+
 def _pct(v) -> str:
     return "—" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:+.1%}"
 
@@ -53,6 +54,19 @@ def _dumps(d: dict) -> str:
     return json.dumps(d, ensure_ascii=False, indent=1)
 
 
+def _say(role: str, text: str) -> None:
+    st.session_state["ai_chat"].append({"role": role, "text": text})
+
+
+def _show_path(p: Path) -> str:
+    """화면·대화에 쓸 경로 — 가능하면 저장소 상대경로(절대경로에는 사용자 이름이 들어간다)."""
+    try:
+        return str(p.relative_to(settings.ROOT))
+    except ValueError:
+        return str(p)
+
+
+# ── 시세 DB ──────────────────────────────────────────────────────────────────────────────────────
 try:
     url = settings.etf_db_url()
 except ValueError as e:
@@ -63,94 +77,132 @@ if not url:
     st.stop()
 try:
     catalog = _catalog(url)
-except Exception as e:  # 접속 실패·테이블 없음 — 사유를 그대로 보인다(비밀번호는 URL 에만 있고 메시지에는 없다)
+except Exception as e:  # 접속 실패·테이블 없음 — 사유만 보인다(URL 의 비밀번호는 메시지에 없다)
     st.error(f"시세 DB 를 읽지 못했다: {type(e).__name__}")
     st.stop()
 if not catalog:
     st.info("`prices_daily` 가 비어 있다. MiroFishTrader `python3 -m src.sources.price_history --mysql` 로 적재한다.")
     st.stop()
 
+# ── 사용자 세팅 파일 ─────────────────────────────────────────────────────────────────────────────
+cfg_path = uc.path()
+cfg_show = _show_path(cfg_path)
+cfg_error = ""
+try:
+    mtime = cfg_path.stat().st_mtime
+except OSError:
+    mtime = 0.0  # 없거나 읽을 수 없다 — `uc.load` 가 사유를 가린다
+try:
+    cfg = _user_config(str(cfg_path), mtime)
+except uc.UserConfigError as e:
+    cfg, cfg_error = uc.UserConfig(path=cfg_path, exists=mtime > 0), "\n- ".join(e.errors)
+
 ss = st.session_state
-ss.setdefault("ai_turns", [])          # LLM 에 보내는 대화(role·content)
-ss.setdefault("ai_chat", [])           # 화면용 말풍선(role·text)
-ss.setdefault("ai_spec_json", _dumps(EXAMPLE))
-ss.setdefault("ai_result_key", "")     # 마지막으로 실행한 명세 JSON
+ss.setdefault("ai_turns", [])
+ss.setdefault("ai_chat", [])
+ss.setdefault("ai_result_key", "")
 ss.setdefault("ai_calls", 0)
 ss.setdefault("ai_usage", [])
 
 ai_on = llm.available()
-ai_status = llm.status()
-with st.expander("데이터 범위 · 쓰는 법", expanded=not ss["ai_result_key"]):
-    st.dataframe(pd.DataFrame([{"종목": s, "시작": a, "끝": b} for s, (a, b) in sorted(catalog.items())]),
-                 hide_index=True, width="stretch")
-    st.markdown("AI 는 요청을 **명세(JSON)** 로 바꾸기만 하고, 계산은 이 서버의 엔진이 한다. 같은 명세는 늘 같은 결과다. "
-                "그래프와 지표는 **단위가치 지수(시작 = 1.0, 시간가중)** 라 적립금에 가려지지 않는다. "
-                "신호는 종가로 판정해 다음 거래일 종가에 체결, 가격은 배당 재투자 기준.")
-    if ai_on:
-        st.caption(f"AI 번역: **{ai_status['label']}** · 모델 `{ai_status['model']}`"
-                   + (" — 무료 모델만 호출하도록 가격 상한 0·폴백 금지를 걸고, 응답 비용이 0 이 아니면 결과를 버린다."
-                      if ai_status["provider"] == "openrouter_free" else ""))
-    else:
-        st.info("AI 입력이 꺼져 있다 — 아래 명세 JSON 을 직접 고쳐 실행할 수 있다. 자연어로 쓰려면 둘 중 하나를 `.env` 에 넣는다:\n\n"
-                f"- **무료(권장)**: `{ai_status['free_key']}` — openrouter.ai 에서 발급. 추가 설치 없이 바로 된다.\n"
-                f"- 유료: `{ai_status['paid_key']}`"
-                + ("" if ai_status["sdk"] else " + `uv sync --extra ai`"))
-    if ai_status["error"]:
-        st.warning(ai_status["error"])
+st_status = llm.status()
+span = f"{min(a for a, _ in catalog.values())} ~ {max(b for _, b in catalog.values())}"
+line = [f"종목 {' · '.join(sorted(catalog))} · {span}",
+        f"AI {st_status['label']}" if ai_on else "AI 꺼짐",
+        f"세팅 `{cfg_show}`" + ("" if cfg.exists else " (없음)")]
+if cfg.presets:
+    line.append(f"프리셋 {len(cfg.presets)}개")
+st.caption(" · ".join(line))
 
-# ── 대화 ───────────────────────────────────────────────────────────────────────────────────────────
+if cfg_error:
+    st.warning(f"세팅 파일을 읽지 못해 기본값으로 돈다 — `{cfg_show}`\n- {cfg_error}")
+if st_status["error"]:
+    st.warning(st_status["error"])
+
+# 첫 화면 인사 — 쓰는 법·프리셋·키 안내를 전부 대화 안에서 한다
+if not ss["ai_chat"]:
+    msg = [HELP]
+    if cfg.presets:
+        msg.append("저장된 프리셋(이름만 쳐도 **AI 없이** 바로 실행): " + " · ".join(f"`{n}`" for n in cfg.names))
+    if not ai_on:
+        msg.append(f"자연어를 쓰려면 `{st_status['free_key']}`(openrouter.ai 무료)를 `.env` 에 넣는다. "
+                   "지금은 프리셋 이름만 실행할 수 있다.")
+    if not cfg.exists:
+        msg.append(f"세팅(기본 자본·선호·프리셋)은 `{cfg_show}` 에 둔다. "
+                   f"`{uc.example_path(cfg_path).name}` 를 복사해 쓴다.")
+    _say("assistant", "\n\n".join(msg))
+
+# ── 대화 ─────────────────────────────────────────────────────────────────────────────────────────
 for m in ss["ai_chat"]:
     with st.chat_message(m["role"]):
         st.markdown(m["text"])
 
-if ai_on and not ss["ai_chat"]:
-    st.caption("예: " + " · ".join(f"“{p}”" for p in PROMPTS))
+blocked = ai_on and ss["ai_calls"] >= MAX_LLM_CALLS
+if blocked:
+    st.warning(f"이 세션의 AI 호출 상한({MAX_LLM_CALLS}회)에 닿았다. 페이지를 새로 열거나 프리셋 이름을 친다.")
+prompt = st.chat_input("말로 설명하거나, 프리셋 이름 또는 명세 JSON 을 붙여 넣는다", key="ai_prompt")
 
-prompt = st.chat_input("백테스트를 말로 설명한다 — 예: QQQ가 고점 대비 30% 빠지면 TQQQ 산다, 2010년부터",
-                       disabled=not ai_on or ss["ai_calls"] >= MAX_LLM_CALLS, key="ai_prompt")
-if ss["ai_calls"] >= MAX_LLM_CALLS:
-    st.warning(f"이 세션의 AI 호출 상한({MAX_LLM_CALLS}회)에 닿았다. 페이지를 새로 열거나 JSON 을 직접 고친다.")
+def _accept(sp, note: str, turns: list[dict] | None = None) -> None:
+    """검증을 통과한 명세를 결과로 삼는다."""
+    ss["ai_result_key"] = _dumps(sp.to_dict())
+    ss["ai_turns"] = turns if turns is not None else [
+        {"role": "user", "content": f"'{sp.title}' 로 실행"},
+        {"role": "assistant", "content": json.dumps(sp.to_dict(), ensure_ascii=False)}]
+    _say("assistant", note)
+
+
+def _fail(note: str) -> None:
+    """실패한 턴 — 이전 결과를 지운다(오류 문구 아래 옛 차트가 남지 않게)."""
+    ss["ai_result_key"] = ""
+    _say("assistant", note)
+
 
 if prompt:
-    ss["ai_chat"].append({"role": "user", "text": prompt})
-    turns = ss["ai_turns"] + [{"role": "user", "content": prompt}]
-    with st.spinner("명세로 바꾸는 중…"):
-        pr = llm.parse(turns, catalog)
-    ss["ai_calls"] += 1
-    if pr.usage:
-        ss["ai_usage"].append({"model": pr.model, **pr.usage})
-    if pr.error:
-        ss["ai_chat"].append({"role": "assistant", "text": f"⚠️ {pr.error}"})
-    else:
+    _say("user", prompt)
+    preset = uc.find_preset(cfg, prompt)
+    typed_spec = llm.extract_json(prompt)  # 대화창에 명세 JSON 을 그대로 붙여 넣는 경로(키 없이도 쓴다)
+    if preset:  # 프리셋 직행 — AI 호출 없음
         try:
-            sp = spec_mod.validate(pr.raw, catalog)
-            ss["ai_turns"] = turns + [{"role": "assistant", "content": pr.text}]
-            ss["ai_spec_json"] = _dumps(sp.to_dict())
-            ss["ai_result_key"] = ss["ai_spec_json"]
-            ss["ai_chat"].append({"role": "assistant", "text": f"**{sp.title}**\n\n{spec_mod.describe(sp)}"})
+            sp = spec_mod.validate(uc.complete_spec(cfg, preset), catalog)
+            _accept(sp, f"프리셋 **{preset}** 을 그대로 실행했다(AI 호출 없음).\n\n{spec_mod.describe(sp)}")
         except spec_mod.SpecError as e:
-            ss["ai_spec_json"] = _dumps(pr.raw)
-            ss["ai_chat"].append({"role": "assistant", "text": "명세가 검증을 통과하지 못했다 — 아래 JSON 을 고쳐 실행한다:\n- "
-                                                                + "\n- ".join(e.errors)})
+            _fail(f"프리셋 **{preset}** 이 올바르지 않다 — `{cfg_show}` 에서 고친다:\n- " + "\n- ".join(e.errors))
+    elif typed_spec is not None:  # 명세 JSON 직접 입력 — AI 호출 없음
+        try:
+            sp = spec_mod.validate(typed_spec, catalog)
+            _accept(sp, f"붙여 넣은 명세를 그대로 실행했다(AI 호출 없음).\n\n{spec_mod.describe(sp)}")
+        except spec_mod.SpecError as e:
+            _fail("붙여 넣은 명세가 검증을 통과하지 못했다:\n- " + "\n- ".join(e.errors))
+    elif not ai_on:
+        names = (" 저장된 프리셋: " + " · ".join(f"`{n}`" for n in cfg.names)) if cfg.presets else ""
+        _fail(f"AI 가 꺼져 있어 자연어를 번역할 수 없다. `{st_status['free_key']}` 를 `.env` 에 넣거나, "
+              f"프리셋 이름 또는 명세 JSON 을 그대로 친다.{names}")
+    elif blocked:
+        _fail("AI 호출 상한에 닿았다. 페이지를 새로 열거나 프리셋 이름·명세 JSON 을 친다.")
+    else:
+        turns = ss["ai_turns"] + [{"role": "user", "content": prompt}]
+        with st.spinner("명세로 바꾸는 중…"):
+            pr = llm.parse(turns, catalog, user_block=uc.prompt_block(cfg))
+        ss["ai_calls"] += 1
+        if pr.usage:
+            ss["ai_usage"].append({"model": pr.model, **pr.usage})
+        if pr.error:
+            _fail(f"⚠️ {pr.error}")
+        else:
+            try:
+                sp = spec_mod.validate(pr.raw, catalog)
+                _accept(sp, f"**{sp.title}**\n\n{spec_mod.describe(sp)}",
+                        turns=turns + [{"role": "assistant", "content": pr.text}])
+            except spec_mod.SpecError as e:
+                # 화면에 편집기를 두지 않는다 → 사유와 받은 JSON 을 대화에 보여 고쳐 말하거나 그대로 붙여 넣게 한다.
+                # 실패한 답도 대화 맥락에 남겨 다음 턴이 무엇이 틀렸는지 알게 한다.
+                ss["ai_turns"] = turns + [{"role": "assistant", "content": pr.text}]
+                _fail("명세가 검증을 통과하지 못했다. 다시 말해 주거나, 아래를 고쳐 그대로 붙여 넣거나 "
+                      f"`{cfg_show}` 의 `presets` 에 넣는다:\n- " + "\n- ".join(e.errors)
+                      + f"\n\n````json\n{_dumps(pr.raw)}\n````")
     st.rerun()
 
-# ── 명세 편집기 ───────────────────────────────────────────────────────────────────────────────────
-with st.expander("명세 JSON — 보기·수정·실행", expanded=not ai_on or not ss["ai_result_key"]):
-    edited = st.text_area("명세", value=ss["ai_spec_json"], height=320, key="ai_spec_editor", label_visibility="collapsed")
-    c1, c2 = st.columns([1, 3])
-    if c1.button("이 명세로 실행", type="primary", key="ai_run_spec"):
-        try:
-            sp = spec_mod.validate(json.loads(edited), catalog)
-            ss["ai_spec_json"] = _dumps(sp.to_dict())
-            ss["ai_result_key"] = ss["ai_spec_json"]
-            st.rerun()
-        except json.JSONDecodeError as e:
-            st.error(f"JSON 문법 오류: {e}")
-        except spec_mod.SpecError as e:
-            st.error("명세 오류:\n- " + "\n- ".join(e.errors))
-    c2.caption("규칙·키 설명은 `src/aibt/spec.py` 의 SCHEMA. 모든 키는 필수이고 안 쓰는 키는 \"\"·0·[] 로 둔다.")
-
-# ── 결과 ───────────────────────────────────────────────────────────────────────────────────────────
+# ── 결과 ─────────────────────────────────────────────────────────────────────────────────────────
 if not ss["ai_result_key"]:
     st.stop()
 try:
@@ -159,8 +211,6 @@ except (ValueError, spec_mod.SpecError) as e:
     st.error(f"실행할 수 없다: {e}")
     st.stop()
 sp, m = res.spec, res.metrics
-st.subheader(sp.title)
-st.caption(spec_mod.describe(sp))
 for n in res.notes:
     st.info(n)
 
@@ -170,7 +220,7 @@ with common.card("ai_equity"):
         frames.append(pd.DataFrame({"date": res.benchmark_unit.index, "profile": f"벤치마크 {sp.benchmark}",
                                     "equity": res.benchmark_unit.values}))
     fig = charts.equity_fig(pd.concat(frames, ignore_index=True))
-    fig.update_layout(title_text="단위가치 지수 (시작 = 1.0) · 낙폭")
+    fig.update_layout(title_text=f"{sp.title} — 단위가치 지수 (시작 = 1.0) · 낙폭")
     if len(frames) == 2:  # equity_fig 는 프로필명(default·bybit)으로만 색을 고른다 → 벤치마크 선을 두 번째 색으로
         fig.data[1].line.color = theme.tokens()["LINE_COLORS"]["bybit"]
     common.chart(fig, "ai_equity_chart")
@@ -207,6 +257,7 @@ if res.benchmark_unit is not None:
     curve["benchmark_unit"] = res.benchmark_unit.values
 d1.download_button("자본곡선 CSV", curve.to_csv(index=False).encode("utf-8"), "ai_backtest_curve.csv", "text/csv", key="ai_dl_csv")
 d2.download_button("명세 JSON", ss["ai_result_key"].encode("utf-8"), "ai_backtest_spec.json", "application/json", key="ai_dl_json")
+st.caption(f"이 명세를 `{cfg_show}` 의 `presets` 에 넣으면 다음부터 이름만 쳐서 AI 없이 돌릴 수 있다.")
 
 if ss["ai_usage"]:
     with st.expander(f"AI 토큰 사용 — 이 세션 {ss['ai_calls']}회"):
