@@ -79,14 +79,24 @@ ss.setdefault("ai_calls", 0)
 ss.setdefault("ai_usage", [])
 
 ai_on = llm.available()
+ai_status = llm.status()
 with st.expander("데이터 범위 · 쓰는 법", expanded=not ss["ai_result_key"]):
     st.dataframe(pd.DataFrame([{"종목": s, "시작": a, "끝": b} for s, (a, b) in sorted(catalog.items())]),
                  hide_index=True, width="stretch")
     st.markdown("AI 는 요청을 **명세(JSON)** 로 바꾸기만 하고, 계산은 이 서버의 엔진이 한다. 같은 명세는 늘 같은 결과다. "
                 "그래프와 지표는 **단위가치 지수(시작 = 1.0, 시간가중)** 라 적립금에 가려지지 않는다. "
                 "신호는 종가로 판정해 다음 거래일 종가에 체결, 가격은 배당 재투자 기준.")
-    if not ai_on:
-        st.info("`ANTHROPIC_API_KEY` 또는 SDK(`uv sync --extra ai`)가 없어 AI 입력은 꺼져 있다. 아래 명세 JSON 을 직접 고쳐 실행할 수 있다.")
+    if ai_on:
+        st.caption(f"AI 번역: **{ai_status['label']}** · 모델 `{ai_status['model']}`"
+                   + (" — 무료 모델만 호출하도록 가격 상한 0·폴백 금지를 걸고, 응답 비용이 0 이 아니면 결과를 버린다."
+                      if ai_status["provider"] == "openrouter_free" else ""))
+    else:
+        st.info("AI 입력이 꺼져 있다 — 아래 명세 JSON 을 직접 고쳐 실행할 수 있다. 자연어로 쓰려면 둘 중 하나를 `.env` 에 넣는다:\n\n"
+                f"- **무료(권장)**: `{ai_status['free_key']}` — openrouter.ai 에서 발급. 추가 설치 없이 바로 된다.\n"
+                f"- 유료: `{ai_status['paid_key']}`"
+                + ("" if ai_status["sdk"] else " + `uv sync --extra ai`"))
+    if ai_status["error"]:
+        st.warning(ai_status["error"])
 
 # ── 대화 ───────────────────────────────────────────────────────────────────────────────────────────
 for m in ss["ai_chat"]:
@@ -202,5 +212,6 @@ if ss["ai_usage"]:
     with st.expander(f"AI 토큰 사용 — 이 세션 {ss['ai_calls']}회"):
         u = pd.DataFrame(ss["ai_usage"])
         st.dataframe(u.rename(columns={"model": "모델", "input": "입력", "cache_read": "캐시 읽기", "cache_write": "캐시 쓰기",
-                                       "output": "출력"}), hide_index=True, width="stretch")
-        st.caption("시스템 프롬프트는 캐시된다(두 번째 호출부터 '캐시 읽기'에 잡혀야 정상). 명세는 JSON 한 덩어리라 출력이 짧다.")
+                                       "output": "출력", "cost": "비용($)"}), hide_index=True, width="stretch")
+        st.caption("무료 공급자는 '비용($)' 이 늘 0 이다(0 이 아니면 호출을 실패로 처리한다). "
+                   "Anthropic 경로에서는 시스템 프롬프트가 캐시돼 두 번째 호출부터 '캐시 읽기'에 잡힌다.")

@@ -49,7 +49,9 @@ VARS: dict[str, tuple[str, str]] = {
     "AT_ENV": ("local", "배포 환경 local·dev·prod. dev·prod 는 시세 DB 필수 + DB 이름에 `_dev`·`_prod` 꼬리표 필수"),
     "AT_MARKET_SOURCE": ("parquet", "시세(1분봉·펀딩) 읽기 소스 parquet·db — 판정 경로(`backtest/run.py`·`run_c1.py`)는 늘 parquet"),
     "AT_MARKET_DB_URL": ("", "시세 DB SQLAlchemy URL(예 mysql+pymysql://at:***@127.0.0.1:3306/market). 비밀번호 포함 → .env 에만"),
-    "AT_AI_MODEL": ("claude-opus-5-5", "AI 백테스트 페이지가 자연어 → 명세 번역에 쓰는 Claude 모델. 키는 ANTHROPIC_API_KEY(환경변수 또는 .env)"),
+    "AT_AI_PROVIDER": ("auto", "AI 백테스트 번역 공급자 auto·openrouter_free·anthropic. auto 는 무료(OPENROUTER_API_KEY)를 먼저 쓰고 없으면 유료(ANTHROPIC_API_KEY)"),
+    "AT_AI_FREE_MODEL": ("openrouter/free", "무료 공급자 모델 — openrouter/free(무료 라우터) 또는 명시적 '제공자/모델:free'. 유료 모델은 거부한다"),
+    "AT_AI_MODEL": ("claude-opus-5-5", "AI 백테스트 유료 공급자(anthropic) 모델. 키는 ANTHROPIC_API_KEY(환경변수 또는 .env)"),
     "AT_AUTH_EXTERNAL": ("0", "1 이면 앞단(리버스 프록시 인증·SSH 터널)이 접근을 막는다고 운영자가 선언 — 외부 bind 허용"
                                "(AT_AUTH_REQUIRED=1 이 함께 켜져 있으면 REQUIRED 가 우선)"),
 }

@@ -73,6 +73,8 @@ curl -fsS http://127.0.0.1:8501/_stcore/health   # ok
 | `AT_ENV` | `local` | 배포 환경 `local`·`dev`·`prod`. dev·prod 는 `AT_MARKET_SOURCE=db` 필수 + DB 이름이 `_dev`·`_prod` 로 끝나야 기동(6절). local 은 `_prod` DB 거부 |
 | `AT_MARKET_SOURCE` | `parquet` | 시세(1분봉) 소스 `parquet`·`db` — `at backtest`·화면 1분봉·커버리지 카드. **판정 경로(`backtest/run.py`·`run_c1.py`)는 늘 parquet** |
 | `AT_MARKET_DB_URL` | (빈값) | 시세 DB SQLAlchemy URL `mysql+pymysql://USER:PASS@HOST:3306/DB`. 비밀번호가 들어가므로 `.env` 에만 두고 로그에는 DB 이름만 찍는다 |
+| `AT_AI_PROVIDER` | `auto` | "AI 백테스트" 번역 공급자. `auto` 는 무료(`OPENROUTER_API_KEY`)를 먼저 쓰고 없으면 유료(`ANTHROPIC_API_KEY`). `openrouter_free`·`anthropic` 으로 고정할 수 있다 |
+| `AT_AI_FREE_MODEL` | `openrouter/free` | 무료 공급자 모델. `openrouter/free`(무료 라우터) 또는 명시적 `제공자/모델:free` 만 허용하고, 요청에 가격 상한 0·폴백 금지를 걸어 유료 전환을 막는다 |
 | `AT_AI_MODEL` | `claude-opus-5-5` | "AI 백테스트" 페이지가 자연어 → 명세 번역에 쓰는 Claude 모델. 키는 `ANTHROPIC_API_KEY`(환경변수 또는 `.env`, 화면 입력 없음). 키·SDK(`--extra ai`)가 없으면 페이지는 JSON 직접 입력만 지원 |
 | `AT_LIVE_ENABLED` | `0` | LIVE 잠금 해제 — 정확히 `1` 일 때만, **환경변수만** |
 | `BYBIT_*` | — | 거래소 키(`.env.example`). ui 컨테이너에는 주지 않는다 |

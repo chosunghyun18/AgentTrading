@@ -29,7 +29,9 @@ def run_page():
 
 def test_no_key_notice_and_editor(db):
     at = run_page()
-    assert any("ANTHROPIC_API_KEY" in i.value for i in at.info)
+    notice = "\n".join(i.value for i in at.info)
+    assert "OPENROUTER_API_KEY" in notice and "ANTHROPIC_API_KEY" in notice  # 무료를 먼저 안내한다
+    assert notice.index("OPENROUTER_API_KEY") < notice.index("ANTHROPIC_API_KEY")
     assert at.text_area(key="ai_spec_editor").value.startswith("{")
     assert at.chat_input(key="ai_prompt").disabled
 
