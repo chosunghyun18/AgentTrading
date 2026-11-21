@@ -49,6 +49,7 @@ VARS: dict[str, tuple[str, str]] = {
     "AT_ENV": ("local", "배포 환경 local·dev·prod. dev·prod 는 시세 DB 필수 + DB 이름에 `_dev`·`_prod` 꼬리표 필수"),
     "AT_MARKET_SOURCE": ("parquet", "시세(1분봉·펀딩) 읽기 소스 parquet·db — 판정 경로(`backtest/run.py`·`run_c1.py`)는 늘 parquet"),
     "AT_MARKET_DB_URL": ("", "시세 DB SQLAlchemy URL(예 mysql+pymysql://at:***@127.0.0.1:3306/market). 비밀번호 포함 → .env 에만"),
+    "AT_AI_MODEL": ("claude-opus-5-5", "AI 백테스트 페이지가 자연어 → 명세 번역에 쓰는 Claude 모델. 키는 ANTHROPIC_API_KEY(환경변수 또는 .env)"),
     "AT_AUTH_EXTERNAL": ("0", "1 이면 앞단(리버스 프록시 인증·SSH 터널)이 접근을 막는다고 운영자가 선언 — 외부 bind 허용"
                                "(AT_AUTH_REQUIRED=1 이 함께 켜져 있으면 REQUIRED 가 우선)"),
 }
@@ -133,14 +134,30 @@ def market_source() -> MarketSource:
         raise ValueError(f"AT_MARKET_SOURCE 는 {MARKET_SOURCES} 중 하나: {kind!r}")
     if kind == "db" and not url:
         raise ValueError("AT_MARKET_SOURCE=db 인데 AT_MARKET_DB_URL 이 비어 있다")
+    if env != "local" and kind != "db":
+        raise ValueError(f"AT_ENV={env} 는 AT_MARKET_SOURCE=db 여야 한다(서버에는 parquet 폴더가 없다)")
+    _check_db_env(env, url)
+    return MarketSource(env, kind, url if kind == "db" else "")
+
+
+def _check_db_env(env: str, url: str) -> None:
+    """DB 이름 ↔ 환경 규칙(`market_source` 와 `etf_db_url` 공용). URL 이 비면 검사하지 않는다."""
+    if not url:
+        return
     if env == "local" and db_name(url).endswith("_prod"):
         raise ValueError(f"AT_ENV=local 이 운영 DB 를 가리킨다: {db_name(url)!r}")
-    if env != "local":
-        if kind != "db":
-            raise ValueError(f"AT_ENV={env} 는 AT_MARKET_SOURCE=db 여야 한다(서버에는 parquet 폴더가 없다)")
-        if not db_name(url).endswith(f"_{env}"):
-            raise ValueError(f"AT_ENV={env} 의 시세 DB 이름은 '_{env}' 로 끝나야 한다: {db_name(url)!r}")
-    return MarketSource(env, kind, url if kind == "db" else "")
+    if env != "local" and not db_name(url).endswith(f"_{env}"):
+        raise ValueError(f"AT_ENV={env} 의 시세 DB 이름은 '_{env}' 로 끝나야 한다: {db_name(url)!r}")
+
+
+def etf_db_url() -> str:
+    """ETF 일봉(`prices_daily`) 을 읽을 시세 DB URL. `AT_MARKET_SOURCE`(1분봉 소스)와 무관하게 `AT_MARKET_DB_URL` 을
+    `market_source()` 와 같은 환경·이름 규칙으로 검사해 돌려준다. 비어 있으면 "" (호출자가 설정 안내)."""
+    env, url = get("AT_ENV").lower(), get("AT_MARKET_DB_URL")
+    if env not in ENVS:
+        raise ValueError(f"AT_ENV 는 {ENVS} 중 하나: {env!r}")
+    _check_db_env(env, url)
+    return url
 
 
 def allowed_emails() -> frozenset[str]:

@@ -231,12 +231,12 @@ scripts/ui.sh                                 # PORT=8502 scripts/ui.sh 로 포�
 ## 개발
 
 ```bash
-uv sync --group dev --extra auth   # Python 3.12 + uv.lock 으로 .venv 생성 (권장)
+uv sync --group dev --extra auth --extra db --extra ai   # Python 3.12 + uv.lock 으로 .venv 생성 (권장)
 uv run pytest
 ```
 
-- `requirements.txt` 는 `uv export` 로 만든 잠금 사본(버전·해시 고정)이라 `pip install -r requirements.txt` 도 같은 버전을 설치한다. 손으로 고치지 않는다(`uv lock` 뒤 `uv export --group dev --extra auth -o requirements.txt`).
-- 이미 다른 Python 의 `.venv` 를 쓰고 있으면 `UV_PROJECT_ENVIRONMENT=.venv312 uv sync --group dev --extra auth` 로 병행 venv 를 만든다.
+- `requirements.txt` 는 `uv export` 로 만든 잠금 사본(버전·해시 고정)이라 `pip install -r requirements.txt` 도 같은 버전을 설치한다. 손으로 고치지 않는다(`uv lock` 뒤 `uv export --group dev --extra auth --extra db --extra ai -o requirements.txt`).
+- 이미 다른 Python 의 `.venv` 를 쓰고 있으면 `UV_PROJECT_ENVIRONMENT=.venv312 uv sync --group dev --extra auth --extra db --extra ai` 로 병행 venv 를 만든다.
 - 배포(Docker · 로그인 게이트 · 환경변수 표)는 [DEPLOY.md](DEPLOY.md). 설계: Obsidian `design/platform-architecture.md`.
 
 ## 전제 / 리스크
@@ -308,7 +308,7 @@ scripts/check_mdd_install.sh
 MDD_NODE=/path/to/node22 CHROME=/path/to/chrome .venv312/bin/python scripts/check_mdd_browser.py
 ```
 
-설치 검증은 `uv`와 잠금 파일을 사용해 `mktemp` 환경에 `uv sync --frozen --python 3.12 --group dev --extra auth`를 실행하고
+설치 검증은 `uv`와 잠금 파일을 사용해 `mktemp` 환경에 `uv sync --frozen --python 3.12 --group dev --extra auth --extra db --extra ai`를 실행하고
 CLI/UI 도움말·import 및 실제 UI 서버의 로컬 HTTP 기동·응답을 검사한 뒤 서버와 환경을 정리한다.
 브라우저 검증은 실제 headless Chrome의 DOM 입력·클릭으로
 가짜 계정 80% 저장 → 등록 → 정확한 80% 손실 차단 → 재개 거부 → 기준금 재설정 → 별도 재개를 확인한다.

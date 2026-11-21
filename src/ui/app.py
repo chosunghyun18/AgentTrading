@@ -39,6 +39,7 @@ NAV = {
         st.Page(PAGES / "explore.py", title="전략 탐색", icon=":material/scatter_plot:"),
         st.Page(PAGES / "trades.py", title="거래 상세", icon=":material/candlestick_chart:"),
         st.Page(PAGES / "diagnose.py", title="진단", icon=":material/troubleshoot:"),
+        st.Page(PAGES / "ai_backtest.py", title="AI 백테스트", icon=":material/chat:"),  # ETF 일봉, 쓰기 없음 — task/ai-backtest.md
     ],
     "설정·안전": [  # 위험 증가 동작(킬스위치·LIVE 전환)을 한 그룹에. 모드 전환을 화면에 둘지는 platform-architecture 5절 D 미결 — 현행 유지
         st.Page(PAGES / "console_risk.py", title="리스크", icon=":material/shield:"),
